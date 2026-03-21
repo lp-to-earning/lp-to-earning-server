@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int         @id @default(autoincrement())
+  walletAddress String      @unique
+  nonce         String
+  createdAt     DateTime    @default(now())
+  
+  config        UserConfig? 
+}
+
+model UserConfig {
+  id                  Int      @id @default(autoincrement())
+  userId              Int      @unique
+  user                User     @relation(fields: [userId], references: [id])
+  
+  topN                Int      @default(3)
+  maxCopyAttempts     Int      @default(10)
+  sortBy              String   @default("score")
+  requireInRange      Boolean  @default(true)
+  minAprPercent       Float    @default(20.0)
+  
+  copyAmountUsd       Float    @default(3.0)
+  dryRun              Boolean  @default(false)
+  intervalMs          Int      @default(1800000)
+  
+  pools               String   @default("[]") 
+  autoRechargeTokens  String   @default("[]") 
+}
+  
