@@ -8,7 +8,7 @@ import { decrypt } from "../lib/crypto";
 
 export async function runBotTask() {
   console.log("── 🤖 [BOT Engine] Cycle Started ──");
-  
+
   // 기존 환경변수 백업
   const originalKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
 
@@ -20,32 +20,47 @@ export async function runBotTask() {
     for (const user of users) {
       if (!user.config || !user.config.isActive) {
         if (!user.config) {
-            console.warn(`│ ⚠️ [User] No config found for ${user.walletAddress}. Skipping...`);
+          console.warn(
+            `│ ⚠️ [User] No config found for ${user.walletAddress}. Skipping...`,
+          );
         }
         continue;
       }
-      
+
       // === [Wallet Switching] 유저별 지갑 키 적용 ===
       let hasValidKey = false;
       if (user.encryptedPrivateKey && user.iv && user.authTag) {
         try {
-          const decryptedKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
+          const decryptedKey = decrypt(
+            user.encryptedPrivateKey,
+            user.iv,
+            user.authTag,
+          );
           process.env.SOLANA_WALLET_PRIVATE_KEY = decryptedKey;
           hasValidKey = true;
-          console.log(`│ [User] Switching to dedicated wallet: ${user.walletAddress}...`);
+          console.log(
+            `│ [User] Switching to dedicated wallet: ${user.walletAddress}...`,
+          );
         } catch (decErr) {
-          console.error(`│ ❌ [User] Decryption failed for ${user.walletAddress}:`, decErr);
-          continue; 
+          console.error(
+            `│ ❌ [User] Decryption failed for ${user.walletAddress}:`,
+            decErr,
+          );
+          continue;
         }
       } else if (originalKey) {
         // 개별 키가 없으면 원래 서버 키 사용
         process.env.SOLANA_WALLET_PRIVATE_KEY = originalKey;
         hasValidKey = true;
-        console.log(`│ [User] Using shared master wallet for: ${user.walletAddress}...`);
+        console.log(
+          `│ [User] Using shared master wallet for: ${user.walletAddress}...`,
+        );
       }
 
       if (!hasValidKey) {
-        console.warn(`│ ⚠️ [User] No private key found for ${user.walletAddress}. Skipping...`);
+        console.warn(
+          `│ ⚠️ [User] No private key found for ${user.walletAddress}. Skipping...`,
+        );
         continue;
       }
       // ===========================================
@@ -64,9 +79,13 @@ export async function runBotTask() {
           try {
             // 풀 가격 및 상위 포지션 조회
             const poolInfo = runCliJson(`pools info ${poolAddr}`);
-            const currentPrice = parseFloat(poolInfo?.data?.pool?.current_price || 0);
+            const currentPrice = parseFloat(
+              poolInfo?.data?.pool?.current_price || 0,
+            );
 
-            const data = runCliJson(`positions top-positions --pool ${poolAddr}`);
+            const data = runCliJson(
+              `positions top-positions --pool ${poolAddr}`,
+            );
             const positions = (data?.data?.positions ?? []).filter((p: any) => {
               if (config.requireInRange && !p.inRange) return false;
               return calcApr(p) >= (config.minAprPercent || 0);
@@ -91,7 +110,9 @@ export async function runBotTask() {
 
         for (const pos of toCopy) {
           try {
-            runCliText(`positions copy --position ${pos.positionAddress} --amount-usd ${config.copyAmountUsd} ${flag}`);
+            runCliText(
+              `positions copy --position ${pos.positionAddress} --amount-usd ${config.copyAmountUsd} ${flag}`,
+            );
           } catch (e) {}
         }
 
