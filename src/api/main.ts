@@ -70,16 +70,42 @@ router.post("/config", authenticate, async (req: AuthRequest, res) => {
     }),
   };
 
-  const updated = await prisma.userConfig.upsert({
-    where: { userId: req.userId },
-    update: configData,
-    create: {
-      userId: req.userId!,
-      ...configData,
-    },
-  });
+  const userId = req.userId!;
 
-  res.json({ success: true, config: updated });
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res
+        .status(401)
+        .json({ error: "User no longer exists; sign in again." });
+    }
+
+    const existing = await prisma.userConfig.findUnique({
+      where: { userId },
+    });
+
+    if (Object.keys(configData).length === 0) {
+      if (existing) {
+        return res.json({ success: true, config: existing });
+      }
+      const created = await prisma.userConfig.create({ data: { userId } });
+      return res.json({ success: true, config: created });
+    }
+
+    const updated = existing
+      ? await prisma.userConfig.update({
+          where: { userId },
+          data: configData,
+        })
+      : await prisma.userConfig.create({
+          data: { userId, ...configData },
+        });
+
+    res.json({ success: true, config: updated });
+  } catch (e) {
+    console.error("[POST /api/config]", e);
+    res.status(500).json({ success: false, error: "Failed to save config." });
+  }
 });
 
 // ==========================================

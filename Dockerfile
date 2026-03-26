@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y openssl python3 make g++ && rm -rf /var
 COPY package*.json ./
 COPY prisma ./prisma/
 RUN npm install
+ENV DATABASE_URL="file:./dev.db"
 RUN npx prisma generate
 
 # 2. 소스 코드 빌드 (TypeScript -> JavaScript)
@@ -27,14 +28,17 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma/schema.prisma ./schema.prisma
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
 
 # 4. byreal-cli 설치 (서버 내에서 봇 구동용)
 RUN npm install -g @byreal-io/byreal-cli
 
-# 5. 환경 변수 기본값
+# 5. 환경 변수 기본값 (SQLite: 볼륨 마운트 시 동일 경로에 마운트하거나 DATABASE_URL 재정의)
 ENV PORT=3001
 ENV NODE_ENV=production
+ENV DATABASE_URL="file:/app/prisma/dev.db"
 
 EXPOSE 3001
 
-CMD ["npm", "run", "start"]
+CMD ["./docker-entrypoint.sh"]

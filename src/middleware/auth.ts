@@ -12,7 +12,15 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
 
   jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
     if (err) return res.status(403).json({ error: "Invalid token" });
-    req.userId = decoded.userId;
+    const raw = decoded?.userId;
+    const id =
+      typeof raw === "number" && Number.isInteger(raw)
+        ? raw
+        : parseInt(String(raw), 10);
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(403).json({ error: "Invalid token" });
+    }
+    req.userId = id;
     next();
   });
 }
