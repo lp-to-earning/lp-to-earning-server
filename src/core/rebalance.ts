@@ -5,7 +5,7 @@ import { balanceWallet } from "./swap";
 /**
  * Out-of-Range 자동 클로즈
  */
-export async function cleanOutOfRange(myList: any[], config: any) {
+export async function cleanOutOfRange(myList: any[], config: any, privateKey?: string, walletAddress?: string) {
   let outOfRange: any[] = [];
 
   for (const p of myList) {
@@ -33,20 +33,20 @@ export async function cleanOutOfRange(myList: any[], config: any) {
     const nftMint = pos.nftMintAddress ?? pos.positionAddress;
     try {
       console.log(`│       * Closing: ${nftMint} (Wait...)`);
-      runCliText(`positions close --nft-mint ${nftMint} ${flag}`);
+      runCliText(`positions close --nft-mint ${nftMint} ${flag}`, privateKey, walletAddress);
     } catch (e: any) {
       console.error(`│       * Closing failed: ${nftMint}`, e.message || e);
     }
   }
 
   // 1:1 자산 밸런싱 실행
-  await balanceWallet(config);
+  await balanceWallet(config, privateKey, walletAddress);
 }
 
 /**
  * 리밸런싱 (더 좋은 포지션 복사)
  */
-export async function rebalance(myList: any[], allCandidates: any[], config: any) {
+export async function rebalance(myList: any[], allCandidates: any[], config: any, privateKey?: string, walletAddress?: string) {
   const myByPair: Record<string, any[]> = {};
   
   myList.filter((p) => p.inRange !== false).forEach((p) => {
@@ -83,7 +83,7 @@ export async function rebalance(myList: any[], allCandidates: any[], config: any
 
     try {
       console.log(`│     - Better position found for ${pair}! (Improves APR by ${(improvement * 100).toFixed(1)}%)`);
-      const result = runCliText(`positions copy --position ${best.positionAddress} --amount-usd ${config.copyAmountUsd} ${flag}`);
+      const result = runCliText(`positions copy --position ${best.positionAddress} --amount-usd ${config.copyAmountUsd} ${flag}`, privateKey, walletAddress);
       const nft = result.match(/NFT Address\s+([1-9A-HJ-NP-Za-km-z]{32,44})/)?.[1] ?? "";
       
       if (nft && !config.dryRun) {
@@ -91,7 +91,7 @@ export async function rebalance(myList: any[], allCandidates: any[], config: any
         const oldNft = myBest.nftMintAddress ?? myBest.positionAddress;
         try {
           console.log(`│       * Closing old position: ${oldNft}`);
-          runCliText(`positions close --nft-mint ${oldNft} ${flag}`);
+          runCliText(`positions close --nft-mint ${oldNft} ${flag}`, privateKey, walletAddress);
         } catch (closeErr: any) {
           console.error(`│       * Closing old failed:`, closeErr.message || closeErr);
         }

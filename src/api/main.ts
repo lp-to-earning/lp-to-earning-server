@@ -143,7 +143,7 @@ router.get("/positions", authenticate, async (req: AuthRequest, res) => {
       decryptedKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
     }
 
-    const myList = getMyPositions(decryptedKey);
+    const myList = getMyPositions(decryptedKey, user?.walletAddress);
     const positions = (myList || []).map((p: any) => ({
       nftMintAddress: p.nftMintAddress ?? p.positionAddress,
       positionAddress: p.positionAddress,
@@ -203,7 +203,7 @@ router.get("/pools", authenticate, async (req: AuthRequest, res) => {
     const poolsArr = (user?.config?.pools as string[]) || [];
 
     const pools = poolsArr.map((addr) => {
-      const data = runCliJson(`pools info ${addr}`, decryptedKey);
+      const data = runCliJson(`pools info ${addr}`, decryptedKey, user?.walletAddress);
       const p = data?.data?.pool ?? {};
       return {
         name: p.name || "Unknown",

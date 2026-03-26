@@ -70,7 +70,7 @@ export async function runBotTask() {
       try {
         // 1. 사전 자산 체크 및 충전
         console.log(`│ [Step 1] Checking assets and recharging...`);
-        await rechargeTokens(config);
+        await rechargeTokens(config, process.env.SOLANA_WALLET_PRIVATE_KEY, user.walletAddress);
 
         // 2. 가용한 모든 타겟 풀의 포지션 수집
         const poolsArr = config.pools as string[];
@@ -82,13 +82,15 @@ export async function runBotTask() {
         for (const poolAddr of poolsArr) {
           try {
             // 풀 가격 및 상위 포지션 조회
-            const poolInfo = runCliJson(`pools info ${poolAddr}`);
+            const poolInfo = runCliJson(`pools info ${poolAddr}`, process.env.SOLANA_WALLET_PRIVATE_KEY, user.walletAddress);
             const currentPrice = parseFloat(
               poolInfo?.data?.pool?.current_price || 0,
             );
 
             const data = runCliJson(
               `positions top-positions --pool ${poolAddr}`,
+              process.env.SOLANA_WALLET_PRIVATE_KEY,
+              user.walletAddress,
             );
             const positions = (data?.data?.positions ?? []).filter((p: any) => {
               if (config.requireInRange && !p.inRange) return false;
@@ -132,6 +134,8 @@ export async function runBotTask() {
               );
               runCliText(
                 `positions copy --position ${pos.positionAddress} --amount-usd ${config.copyAmountUsd} ${flag}`,
+                process.env.SOLANA_WALLET_PRIVATE_KEY,
+                user.walletAddress,
               );
             } catch (e: any) {
               console.error(
@@ -146,10 +150,10 @@ export async function runBotTask() {
 
         // 5. 내 포지션 관리 (Out-of-range & Rebalance)
         console.log(`│ [Step 5] Managing existing positions...`);
-        const myList = getMyPositions();
+        const myList = getMyPositions(process.env.SOLANA_WALLET_PRIVATE_KEY, user.walletAddress);
         console.log(`│   - Current positions: ${myList.length}`);
-        await cleanOutOfRange(myList, config);
-        await rebalance(myList, allCandidates, config);
+        await cleanOutOfRange(myList, config, process.env.SOLANA_WALLET_PRIVATE_KEY, user.walletAddress);
+        await rebalance(myList, allCandidates, config, process.env.SOLANA_WALLET_PRIVATE_KEY, user.walletAddress);
       } catch (userErr) {
         console.error(`│ ❌ [User] ${user.walletAddress} failed:`, userErr);
       }

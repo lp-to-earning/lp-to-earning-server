@@ -1,15 +1,20 @@
 import { execSync } from "child_process";
 
-export function runCliJson(args: string, privateKey?: string): any {
+export function runCliJson(args: string, privateKey?: string, walletAddress?: string): any {
+  const homeDir = walletAddress ? `/tmp/byreal-${walletAddress}` : process.env.HOME || "/root";
   const cmdArgs = args.includes("-o json") ? args : `${args} -o json`;
+
   try {
-    const raw = execSync(`byreal-cli ${cmdArgs}`, {
+    if (privateKey && walletAddress) {
+      execSync(`mkdir -p ${homeDir} && HOME=${homeDir} byreal-cli wallet set --private-key ${privateKey} --non-interactive`, {
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    }
+
+    const raw = execSync(`HOME=${homeDir} byreal-cli ${cmdArgs}`, {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
-      env: { 
-        ...process.env, 
-        ...(privateKey && { SOLANA_WALLET_PRIVATE_KEY: privateKey }) 
-      }
     });
 
     const lines = raw.split("\n");
@@ -46,24 +51,33 @@ export function runCliJson(args: string, privateKey?: string): any {
   }
 }
 
-export function runCliText(args: string, privateKey?: string): string {
-  return execSync(`byreal-cli ${args}`, {
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "pipe"],
-    env: { 
-      ...process.env, 
-      ...(privateKey && { SOLANA_WALLET_PRIVATE_KEY: privateKey }) 
+export function runCliText(args: string, privateKey?: string, walletAddress?: string): string {
+  const homeDir = walletAddress ? `/tmp/byreal-${walletAddress}` : process.env.HOME || "/root";
+
+  try {
+    if (privateKey && walletAddress) {
+      execSync(`mkdir -p ${homeDir} && HOME=${homeDir} byreal-cli wallet set --private-key ${privateKey} --non-interactive`, {
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
     }
-  });
+
+    return execSync(`HOME=${homeDir} byreal-cli ${args}`, {
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (e: any) {
+    throw e;
+  }
 }
 
-export function getMyPositions(privateKey?: string): any[] {
+export function getMyPositions(privateKey?: string, walletAddress?: string): any[] {
   const allPos: any[] = [];
   let page = 1;
   const pageSize = 50;
   while (true) {
     try {
-      const data = runCliJson(`positions list --page ${page} --page-size ${pageSize}`, privateKey);
+      const data = runCliJson(`positions list --page ${page} --page-size ${pageSize}`, privateKey, walletAddress);
       const pos = data?.data?.positions ?? [];
       if (pos.length === 0) break;
       allPos.push(...pos);
