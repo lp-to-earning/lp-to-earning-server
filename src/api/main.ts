@@ -39,10 +39,14 @@ router.post("/private-key", authenticate, async (req: AuthRequest, res) => {
 
 // 봇 설정 조회
 router.get("/config", authenticate, async (req: AuthRequest, res) => {
-  const config = await prisma.userConfig.findUnique({
-    where: { userId: req.userId },
+  const user = await prisma.user.findUnique({
+    where: { id: req.userId },
+    include: { config: true },
   });
-  res.json({ config });
+  res.json({ 
+    config: user?.config,
+    hasPrivateKey: !!user?.encryptedPrivateKey 
+  });
 });
 
 // 봇 설정 변경
