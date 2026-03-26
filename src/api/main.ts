@@ -3,8 +3,35 @@ import { prisma } from "../lib/db";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { runCliJson, getMyPositions } from "../core/dex";
 import { calcApr, calcScore } from "../core/position";
+import { encrypt } from "../lib/crypto";
 
 const router = Router();
+
+// ==========================================
+// 1. 개인키 보안 등록
+// ==========================================
+router.post("/private-key", authenticate, async (req: AuthRequest, res) => {
+  const { privateKey } = req.body;
+  if (!privateKey) return res.status(400).json({ error: "Private key is required" });
+
+  try {
+    // 즉시 암호화
+    const { encrypted, iv, authTag } = encrypt(privateKey);
+
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: {
+        encryptedPrivateKey: encrypted,
+        iv,
+        authTag,
+      },
+    });
+
+    res.json({ success: true, message: "Private key encrypted and saved securely." });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: "Encryption failed." });
+  }
+});
 
 // ==========================================
 // 1. Config 관리
