@@ -59,17 +59,23 @@ router.post("/config", authenticate, async (req: AuthRequest, res) => {
     return arr.filter((x: any) => typeof x === "string" && x !== "[" && x !== "]");
   };
 
-  const updated = await prisma.userConfig.update({
+  const configData = {
+    ...(topN !== undefined && { topN }),
+    ...(copyAmountUsd !== undefined && { copyAmountUsd }),
+    ...(minAprPercent !== undefined && { minAprPercent }),
+    ...(intervalMs !== undefined && { intervalMs }),
+    ...(pools !== undefined && { pools: sanitizeArr(pools) }),
+    ...(autoRechargeTokens !== undefined && {
+      autoRechargeTokens: sanitizeArr(autoRechargeTokens),
+    }),
+  };
+
+  const updated = await prisma.userConfig.upsert({
     where: { userId: req.userId },
-    data: {
-      ...(topN !== undefined && { topN }),
-      ...(copyAmountUsd !== undefined && { copyAmountUsd }),
-      ...(minAprPercent !== undefined && { minAprPercent }),
-      ...(intervalMs !== undefined && { intervalMs }),
-      ...(pools !== undefined && { pools: sanitizeArr(pools) }),
-      ...(autoRechargeTokens !== undefined && {
-        autoRechargeTokens: sanitizeArr(autoRechargeTokens),
-      }),
+    update: configData,
+    create: {
+      userId: req.userId!,
+      ...configData,
     },
   });
 
