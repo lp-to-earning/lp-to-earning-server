@@ -69,11 +69,13 @@ export async function runBotTask() {
 
       try {
         // 1. 사전 자산 체크 및 충전
+        console.log(`│ [Step 1] Checking assets and recharging...`);
         await rechargeTokens(config);
 
         // 2. 가용한 모든 타겟 풀의 포지션 수집
         const poolsArr = config.pools as string[];
         const allCandidates: any[] = [];
+        console.log(`│ [Step 2] Collecting candidates from ${poolsArr.length} pools...`);
 
         for (const poolAddr of poolsArr) {
           try {
@@ -91,33 +93,48 @@ export async function runBotTask() {
               return calcApr(p) >= (config.minAprPercent || 0);
             });
 
+            console.log(`│   - Pool ${poolAddr}: Found ${positions.length} valid positions.`);
+
             positions.forEach((p: any) => {
               p._currentPrice = currentPrice;
               p._apr = calcApr(p);
             });
             allCandidates.push(...positions);
-          } catch (e) {}
+          } catch (e: any) {
+            console.error(`│   - Pool ${poolAddr} error:`, e.message || e);
+          }
         }
 
         // 3. 점수 기반 정렬
         const sortMode = (config.sortBy as string) || "score";
         allCandidates.sort(SORT_FN[sortMode] || SORT_FN.score);
+        console.log(`│ [Step 3] Total candidates: ${allCandidates.length} (Sorted by ${sortMode})`);
 
         // 4. 신규 포지션 복사 시도
         const flag = config.dryRun ? "--dry-run" : "--confirm";
         const targetNumber = config.topN || 0;
         const toCopy = allCandidates.slice(0, targetNumber);
-
-        for (const pos of toCopy) {
-          try {
-            runCliText(
-              `positions copy --position ${pos.positionAddress} --amount-usd ${config.copyAmountUsd} ${flag}`,
-            );
-          } catch (e) {}
+        
+        if (toCopy.length > 0) {
+          console.log(`│ [Step 4] Attempting to copy ${toCopy.length} new positions...`);
+          for (const pos of toCopy) {
+            try {
+              console.log(`│   - Copying: ${pos.positionAddress} (APR: ${pos._apr.toFixed(2)}%)`);
+              runCliText(
+                `positions copy --position ${pos.positionAddress} --amount-usd ${config.copyAmountUsd} ${flag}`,
+              );
+            } catch (e: any) {
+              console.error(`│   - Copying failed: ${pos.positionAddress}`, e.message || e);
+            }
+          }
+        } else {
+          console.log(`│ [Step 4] No new positions to copy.`);
         }
 
         // 5. 내 포지션 관리 (Out-of-range & Rebalance)
+        console.log(`│ [Step 5] Managing existing positions...`);
         const myList = getMyPositions();
+        console.log(`│   - Current positions: ${myList.length}`);
         await cleanOutOfRange(myList, config);
         await rebalance(myList, allCandidates, config);
       } catch (userErr) {

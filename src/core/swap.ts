@@ -79,9 +79,12 @@ export async function rechargeTokens(config: any) {
       const valueUsd = balanceUi * priceUsd;
 
       if (valueUsd < 2) { // 임계치 $2 고정 (config에 따라 다를 수 있음)
+        console.log(`│     * Asset low: ${confMint.substring(0, 8)}... ($${valueUsd.toFixed(2)}). Recharging...`);
         const dryRunFlag = config.dryRun ? "--dry-run" : "--confirm";
         runCliJson(`swap execute --input-mint ${USDC_MINT} --output-mint ${confMint} --amount 5 ${dryRunFlag}`);
       }
     }
-  } catch (e) {}
+  } catch (e: any) {
+    console.error(`│     * Recharge error:`, e.message || e);
+  }
 }

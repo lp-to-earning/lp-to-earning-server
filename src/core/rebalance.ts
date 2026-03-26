@@ -20,15 +20,23 @@ export async function cleanOutOfRange(myList: any[], config: any) {
     } 
   }
 
-  if (outOfRange.length === 0) return;
+  if (outOfRange.length === 0) {
+    console.log(`│     - All existing positions in range.`);
+    return;
+  }
+  
+  console.log(`│     - Found ${outOfRange.length} out-of-range positions. Closing...`);
 
   const flag = config.dryRun ? "--dry-run" : "--confirm";
 
   for (const pos of outOfRange) {
     const nftMint = pos.nftMintAddress ?? pos.positionAddress;
     try {
+      console.log(`│       * Closing: ${nftMint} (Wait...)`);
       runCliText(`positions close --nft-mint ${nftMint} ${flag}`);
-    } catch (e) {}
+    } catch (e: any) {
+      console.error(`│       * Closing failed: ${nftMint}`, e.message || e);
+    }
   }
 
   // 1:1 자산 밸런싱 실행
@@ -74,15 +82,22 @@ export async function rebalance(myList: any[], allCandidates: any[], config: any
     if (improvement < config.rebalanceThreshold || bestScore <= 0 || bestApr <= 0) continue;
 
     try {
+      console.log(`│     - Better position found for ${pair}! (Improves APR by ${(improvement * 100).toFixed(1)}%)`);
       const result = runCliText(`positions copy --position ${best.positionAddress} --amount-usd ${config.copyAmountUsd} ${flag}`);
       const nft = result.match(/NFT Address\s+([1-9A-HJ-NP-Za-km-z]{32,44})/)?.[1] ?? "";
       
       if (nft && !config.dryRun) {
+        console.log(`│       * Successfully copied! New NFT: ${nft}`);
         const oldNft = myBest.nftMintAddress ?? myBest.positionAddress;
         try {
+          console.log(`│       * Closing old position: ${oldNft}`);
           runCliText(`positions close --nft-mint ${oldNft} ${flag}`);
-        } catch (closeErr) {}
+        } catch (closeErr: any) {
+          console.error(`│       * Closing old failed:`, closeErr.message || closeErr);
+        }
       }
-    } catch (e) {}
+    } catch (e: any) {
+      console.error(`│     - Rebalance failed for ${pair}:`, e.message || e);
+    }
   }
 }
