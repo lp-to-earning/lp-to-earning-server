@@ -26,6 +26,7 @@ model UserConfig {
   userId              Int      @unique
   user                User     @relation(fields: [userId], references: [id])
   
+  isActive            Boolean  @default(false)
   topN                Int      @default(3)
   maxCopyAttempts     Int      @default(10)
   sortBy              String   @default("score")

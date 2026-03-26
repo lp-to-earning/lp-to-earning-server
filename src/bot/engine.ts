@@ -18,7 +18,12 @@ export async function runBotTask() {
     });
 
     for (const user of users) {
-      if (!user.config) continue;
+      if (!user.config || !user.config.isActive) {
+        if (!user.config) {
+            console.warn(`│ ⚠️ [User] No config found for ${user.walletAddress}. Skipping...`);
+        }
+        continue;
+      }
       
       // === [Wallet Switching] 유저별 지갑 키 적용 ===
       let hasValidKey = false;

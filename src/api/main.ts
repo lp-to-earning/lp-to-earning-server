@@ -47,7 +47,7 @@ router.get("/config", authenticate, async (req: AuthRequest, res) => {
 
 // 봇 설정 변경
 router.post("/config", authenticate, async (req: AuthRequest, res) => {
-  const { topN, copyAmountUsd, minAprPercent, intervalMs, pools, autoRechargeTokens } = req.body;
+  const { isActive, topN, copyAmountUsd, minAprPercent, intervalMs, pools, autoRechargeTokens } = req.body;
 
   const sanitizeArr = (val: any) => {
     let arr = [];
@@ -60,6 +60,7 @@ router.post("/config", authenticate, async (req: AuthRequest, res) => {
   };
 
   const configData = {
+    ...(isActive !== undefined && { isActive }),
     ...(topN !== undefined && { topN }),
     ...(copyAmountUsd !== undefined && { copyAmountUsd }),
     ...(minAprPercent !== undefined && { minAprPercent }),
