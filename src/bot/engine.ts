@@ -4,8 +4,14 @@ import { calcApr, calcScore, SORT_FN } from "../core/position";
 import { cleanOutOfRange, rebalance } from "../core/rebalance";
 import { rechargeTokens } from "../core/swap";
 
+import { decrypt } from "../lib/crypto";
+
 export async function runBotTask() {
   console.log("── 🤖 [BOT Engine] Cycle Started ──");
+  
+  // 기존 환경변수 백업
+  const originalKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
+
   try {
     const users = await prisma.user.findMany({
       include: { config: true },
@@ -13,8 +19,33 @@ export async function runBotTask() {
 
     for (const user of users) {
       if (!user.config) continue;
+      
+      // === [Wallet Switching] 유저별 지갑 키 적용 ===
+      let hasValidKey = false;
+      if (user.encryptedPrivateKey && user.iv && user.authTag) {
+        try {
+          const decryptedKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
+          process.env.SOLANA_WALLET_PRIVATE_KEY = decryptedKey;
+          hasValidKey = true;
+          console.log(`│ [User] Switching to dedicated wallet: ${user.walletAddress}...`);
+        } catch (decErr) {
+          console.error(`│ ❌ [User] Decryption failed for ${user.walletAddress}:`, decErr);
+          continue; 
+        }
+      } else if (originalKey) {
+        // 개별 키가 없으면 원래 서버 키 사용
+        process.env.SOLANA_WALLET_PRIVATE_KEY = originalKey;
+        hasValidKey = true;
+        console.log(`│ [User] Using shared master wallet for: ${user.walletAddress}...`);
+      }
+
+      if (!hasValidKey) {
+        console.warn(`│ ⚠️ [User] No private key found for ${user.walletAddress}. Skipping...`);
+        continue;
+      }
+      // ===========================================
+
       const config = user.config;
-      console.log(`│ [User] Processing ${user.walletAddress}...`);
 
       try {
         // 1. 사전 자산 체크 및 충전
