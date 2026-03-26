@@ -47,7 +47,16 @@ router.get("/config", authenticate, async (req: AuthRequest, res) => {
 
 // 봇 설정 변경
 router.post("/config", authenticate, async (req: AuthRequest, res) => {
-  const { isActive, topN, copyAmountUsd, minAprPercent, intervalMs, pools, autoRechargeTokens } = req.body;
+  const {
+    isActive,
+    topN,
+    copyAmountUsd,
+    minAprPercent,
+    intervalMs,
+    dryRun,
+    pools,
+    autoRechargeTokens,
+  } = req.body;
 
   const sanitizeArr = (val: any) => {
     let arr = [];
@@ -65,6 +74,7 @@ router.post("/config", authenticate, async (req: AuthRequest, res) => {
     ...(copyAmountUsd !== undefined && { copyAmountUsd }),
     ...(minAprPercent !== undefined && { minAprPercent }),
     ...(intervalMs !== undefined && { intervalMs }),
+    ...(dryRun !== undefined && { dryRun }),
     ...(pools !== undefined && { pools: sanitizeArr(pools) }),
     ...(autoRechargeTokens !== undefined && {
       autoRechargeTokens: sanitizeArr(autoRechargeTokens),
@@ -120,7 +130,8 @@ router.get("/positions", authenticate, async (req: AuthRequest, res) => {
     const positions = (myList || []).map((p: any) => ({
       nftMintAddress: p.nftMintAddress ?? p.positionAddress,
       positionAddress: p.positionAddress,
-      pair: p.pair || p.poolAddress,
+      poolAddress: p.poolAddress ?? p.pool_address ?? "",
+      pair: p.pair || p.poolAddress || p.pool_address || "",
       liquidityUsd: parseFloat(p.liquidityUsd || 0),
       earnedUsd: parseFloat(p.earnedUsd || 0),
       pnlUsd: parseFloat(p.pnlUsd || 0),
