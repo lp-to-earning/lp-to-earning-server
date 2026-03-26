@@ -2,7 +2,8 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# 1. 의존성 설치
+# 1. 빌드 도구 및 라이브러리 설치
+RUN apt-get update && apt-get install -y openssl python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 COPY prisma ./prisma/
 RUN npm install
@@ -14,6 +15,9 @@ RUN npm run build
 
 # --- 실행 단계 ---
 FROM node:20-slim
+
+# Prisma 엔진 실행에 필요한 라이브러리 설치
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
