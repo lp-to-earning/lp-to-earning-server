@@ -75,7 +75,9 @@ export async function runBotTask() {
         // 2. 가용한 모든 타겟 풀의 포지션 수집
         const poolsArr = config.pools as string[];
         const allCandidates: any[] = [];
-        console.log(`│ [Step 2] Collecting candidates from ${poolsArr.length} pools...`);
+        console.log(
+          `│ [Step 2] Collecting candidates from ${poolsArr.length} pools...`,
+        );
 
         for (const poolAddr of poolsArr) {
           try {
@@ -93,7 +95,9 @@ export async function runBotTask() {
               return calcApr(p) >= (config.minAprPercent || 0);
             });
 
-            console.log(`│   - Pool ${poolAddr}: Found ${positions.length} valid positions.`);
+            console.log(
+              `│   - Pool ${poolAddr}: Found ${positions.length} valid positions.`,
+            );
 
             positions.forEach((p: any) => {
               p._currentPrice = currentPrice;
@@ -108,23 +112,32 @@ export async function runBotTask() {
         // 3. 점수 기반 정렬
         const sortMode = (config.sortBy as string) || "score";
         allCandidates.sort(SORT_FN[sortMode] || SORT_FN.score);
-        console.log(`│ [Step 3] Total candidates: ${allCandidates.length} (Sorted by ${sortMode})`);
+        console.log(
+          `│ [Step 3] Total candidates: ${allCandidates.length} (Sorted by ${sortMode})`,
+        );
 
         // 4. 신규 포지션 복사 시도
         const flag = config.dryRun ? "--dry-run" : "--confirm";
         const targetNumber = config.topN || 0;
         const toCopy = allCandidates.slice(0, targetNumber);
-        
+
         if (toCopy.length > 0) {
-          console.log(`│ [Step 4] Attempting to copy ${toCopy.length} new positions...`);
+          console.log(
+            `│ [Step 4] Attempting to copy ${toCopy.length} new positions...`,
+          );
           for (const pos of toCopy) {
             try {
-              console.log(`│   - Copying: ${pos.positionAddress} (APR: ${pos._apr.toFixed(2)}%)`);
+              console.log(
+                `│   - Copying: ${pos.positionAddress} (APR: ${pos._apr.toFixed(2)}%)`,
+              );
               runCliText(
                 `positions copy --position ${pos.positionAddress} --amount-usd ${config.copyAmountUsd} ${flag}`,
               );
             } catch (e: any) {
-              console.error(`│   - Copying failed: ${pos.positionAddress}`, e.message || e);
+              console.error(
+                `│   - Copying failed: ${pos.positionAddress}`,
+                e.message || e,
+              );
             }
           }
         } else {

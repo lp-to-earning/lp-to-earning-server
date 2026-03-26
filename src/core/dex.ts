@@ -1,11 +1,15 @@
 import { execSync } from "child_process";
 
-export function runCliJson(args: string): any {
+export function runCliJson(args: string, privateKey?: string): any {
   const cmdArgs = args.includes("-o json") ? args : `${args} -o json`;
   try {
     const raw = execSync(`byreal-cli ${cmdArgs}`, {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
+      env: { 
+        ...process.env, 
+        ...(privateKey && { SOLANA_WALLET_PRIVATE_KEY: privateKey }) 
+      }
     });
 
     const lines = raw.split("\n");
@@ -42,20 +46,24 @@ export function runCliJson(args: string): any {
   }
 }
 
-export function runCliText(args: string): string {
+export function runCliText(args: string, privateKey?: string): string {
   return execSync(`byreal-cli ${args}`, {
     encoding: "utf8",
     stdio: ["pipe", "pipe", "pipe"],
+    env: { 
+      ...process.env, 
+      ...(privateKey && { SOLANA_WALLET_PRIVATE_KEY: privateKey }) 
+    }
   });
 }
 
-export function getMyPositions(): any[] {
+export function getMyPositions(privateKey?: string): any[] {
   const allPos: any[] = [];
   let page = 1;
   const pageSize = 50;
   while (true) {
     try {
-      const data = runCliJson(`positions list --page ${page} --page-size ${pageSize}`);
+      const data = runCliJson(`positions list --page ${page} --page-size ${pageSize}`, privateKey);
       const pos = data?.data?.positions ?? [];
       if (pos.length === 0) break;
       allPos.push(...pos);

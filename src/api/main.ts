@@ -3,7 +3,7 @@ import { prisma } from "../lib/db";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { runCliJson, getMyPositions } from "../core/dex";
 import { calcApr, calcScore } from "../core/position";
-import { encrypt } from "../lib/crypto";
+import { encrypt, decrypt } from "../lib/crypto";
 
 const router = Router();
 
@@ -130,7 +130,20 @@ router.post("/config", authenticate, async (req: AuthRequest, res) => {
 // 내 포지션 조회
 router.get("/positions", authenticate, async (req: AuthRequest, res) => {
   try {
-    const myList = getMyPositions();
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+    });
+
+    let decryptedKey: string | undefined = undefined;
+    if (user?.encryptedPrivateKey && user.iv && user.authTag) {
+      try {
+        decryptedKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
+      } catch (e) {}
+    } else {
+      decryptedKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
+    }
+
+    const myList = getMyPositions(decryptedKey);
     const positions = (myList || []).map((p: any) => ({
       nftMintAddress: p.nftMintAddress ?? p.positionAddress,
       positionAddress: p.positionAddress,
@@ -177,10 +190,20 @@ router.get("/pools", authenticate, async (req: AuthRequest, res) => {
       where: { id: req.userId },
       include: { config: true },
     });
+
+    let decryptedKey: string | undefined = undefined;
+    if (user?.encryptedPrivateKey && user.iv && user.authTag) {
+      try {
+        decryptedKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
+      } catch (e) {}
+    } else {
+      decryptedKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
+    }
+
     const poolsArr = (user?.config?.pools as string[]) || [];
 
     const pools = poolsArr.map((addr) => {
-      const data = runCliJson(`pools info ${addr}`);
+      const data = runCliJson(`pools info ${addr}`, decryptedKey);
       const p = data?.data?.pool ?? {};
       return {
         name: p.name || "Unknown",
