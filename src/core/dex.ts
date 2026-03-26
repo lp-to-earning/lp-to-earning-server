@@ -1,0 +1,69 @@
+import { execSync } from "child_process";
+
+export function runCliJson(args: string): any {
+  const cmdArgs = args.includes("-o json") ? args : `${args} -o json`;
+  try {
+    const raw = execSync(`byreal-cli ${cmdArgs}`, {
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    const lines = raw.split("\n");
+    const jsonLines = lines.filter((line) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("[") && trimmed.includes("]")) return false;
+      if (!trimmed) return false;
+      return true;
+    });
+
+    const cleanJson = jsonLines.join("\n").trim();
+    const startIndex = cleanJson.indexOf("{");
+    const startArrayIndex = cleanJson.indexOf("[");
+
+    let finalJson = cleanJson;
+    const effectiveStart =
+      startIndex !== -1 &&
+      (startArrayIndex === -1 || startIndex < startArrayIndex)
+        ? startIndex
+        : startArrayIndex;
+
+    if (effectiveStart !== -1) {
+      finalJson = cleanJson.substring(effectiveStart);
+    }
+
+    return JSON.parse(finalJson);
+  } catch (e: any) {
+    try {
+      const errorMsg = e.stdout || e.stderr || e.message;
+      const jsonMatch = errorMsg.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {}
+    throw e;
+  }
+}
+
+export function runCliText(args: string): string {
+  return execSync(`byreal-cli ${args}`, {
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+}
+
+export function getMyPositions(): any[] {
+  const allPos: any[] = [];
+  let page = 1;
+  const pageSize = 50;
+  while (true) {
+    try {
+      const data = runCliJson(`positions list --page ${page} --page-size ${pageSize}`);
+      const pos = data?.data?.positions ?? [];
+      if (pos.length === 0) break;
+      allPos.push(...pos);
+      if (pos.length < pageSize) break;
+      page++;
+    } catch (e) {
+      break;
+    }
+  }
+  return allPos;
+}

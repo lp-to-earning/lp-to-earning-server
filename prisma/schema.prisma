@@ -31,7 +31,7 @@ model UserConfig {
   dryRun              Boolean  @default(false)
   intervalMs          Int      @default(1800000)
   
-  pools               String   @default("[]") 
-  autoRechargeTokens  String   @default("[]") 
+  pools               Json     @default("[]") 
+  autoRechargeTokens  Json     @default("[]") 
 }
   
