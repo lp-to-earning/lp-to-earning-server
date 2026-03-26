@@ -26,6 +26,7 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma/schema.prisma ./schema.prisma
 
 # 4. byreal-cli 설치 (서버 내에서 봇 구동용)
 RUN npm install -g @byreal-io/byreal-cli
