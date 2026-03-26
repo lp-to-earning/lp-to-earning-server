@@ -24,7 +24,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 
 # 4. byreal-cli 설치 (서버 내에서 봇 구동용)
-RUN npm install -g @byreal/cli@latest
+RUN npm install -g byreal-cli
 
 # 5. 환경 변수 기본값
 ENV PORT=3001
