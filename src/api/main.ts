@@ -193,6 +193,24 @@ router.get("/positions", authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// DEX 전체 풀 목록 조회 (검색용, 인증 없음)
+router.get("/pools/all", async (req, res) => {
+  try {
+    const data = runCliJson("pools list -o json");
+    const pools = (data?.data?.pools || []).map((p: any) => ({
+      name: p.name || `${p.token_a?.symbol}/${p.token_b?.symbol}`,
+      address: p.address,
+      price: parseFloat(p.current_price || 0),
+      apr: parseFloat(p.apr || 0),
+      tvl: parseFloat(p.tvl_usd || 0),
+      volume24h: parseFloat(p.volume_24h_usd || 0),
+    }));
+    res.json({ success: true, data: pools });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // 풀 및 토큰 조회
 router.get("/pools", authenticate, async (req: AuthRequest, res) => {
   try {
