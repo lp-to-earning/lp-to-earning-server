@@ -12,7 +12,8 @@ const router = Router();
 // ==========================================
 router.post("/private-key", authenticate, async (req: AuthRequest, res) => {
   const { privateKey } = req.body;
-  if (!privateKey) return res.status(400).json({ error: "Private key is required" });
+  if (!privateKey)
+    return res.status(400).json({ error: "Private key is required" });
 
   try {
     // 즉시 암호화
@@ -27,7 +28,10 @@ router.post("/private-key", authenticate, async (req: AuthRequest, res) => {
       },
     });
 
-    res.json({ success: true, message: "Private key encrypted and saved securely." });
+    res.json({
+      success: true,
+      message: "Private key encrypted and saved securely.",
+    });
   } catch (e: any) {
     res.status(500).json({ success: false, error: "Encryption failed." });
   }
@@ -43,9 +47,9 @@ router.get("/config", authenticate, async (req: AuthRequest, res) => {
     where: { id: req.userId },
     include: { config: true },
   });
-  res.json({ 
+  res.json({
     config: user?.config,
-    hasPrivateKey: !!user?.encryptedPrivateKey 
+    hasPrivateKey: !!user?.encryptedPrivateKey,
   });
 });
 
@@ -65,11 +69,17 @@ router.post("/config", authenticate, async (req: AuthRequest, res) => {
   const sanitizeArr = (val: any) => {
     let arr = [];
     if (typeof val === "string") {
-      try { arr = JSON.parse(val); } catch { arr = []; }
+      try {
+        arr = JSON.parse(val);
+      } catch {
+        arr = [];
+      }
     } else if (Array.isArray(val)) {
       arr = val;
     }
-    return arr.filter((x: any) => typeof x === "string" && x !== "[" && x !== "]");
+    return arr.filter(
+      (x: any) => typeof x === "string" && x !== "[" && x !== "]",
+    );
   };
 
   const configData = {
@@ -203,7 +213,11 @@ router.get("/pools", authenticate, async (req: AuthRequest, res) => {
     const poolsArr = (user?.config?.pools as string[]) || [];
 
     const pools = poolsArr.map((addr) => {
-      const data = runCliJson(`pools info ${addr}`, decryptedKey, user?.walletAddress);
+      const data = runCliJson(
+        `pools info ${addr}`,
+        decryptedKey,
+        user?.walletAddress,
+      );
       const p = data?.data?.pool ?? {};
       return {
         name: p.name || "Unknown",
