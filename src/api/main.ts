@@ -199,7 +199,11 @@ router.get("/pools/all", async (req, res) => {
     const data = runCliJson("pools list -o json");
     const pools = (data?.data?.pools || []).map((p: any) => ({
       name: p.pair || "Unknown",
-      address: p.id, // CLI JSON uses id as pool address
+      address: p.id,
+      symbolA: p.token_a?.symbol || "",
+      symbolB: p.token_b?.symbol || "",
+      logoA: p.token_a?.logo_uri || "",
+      logoB: p.token_b?.logo_uri || "",
       price: parseFloat(p.current_price || 0),
       apr: parseFloat(p.apr || 0),
       tvl: parseFloat(p.tvl_usd || 0),
@@ -258,6 +262,10 @@ router.get("/pools", authenticate, async (req: AuthRequest, res) => {
       return {
         name: p.pair || "Unknown",
         address: addr,
+        symbolA: p.token_a?.symbol || "",
+        symbolB: p.token_b?.symbol || "",
+        logoA: p.token_a?.logo_uri || "",
+        logoB: p.token_b?.logo_uri || "",
         tvlUsd: parseFloat(p.tvl_usd || 0),
         apr: parseFloat(p.apr || 0),
         volume24h: parseFloat(p.volume_24h_usd || 0),
