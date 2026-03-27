@@ -66,19 +66,34 @@ export async function rechargeTokens(config: any, privateKey?: string, walletAdd
   try {
     const balanceData = runCliJson("wallet balance", privateKey, walletAddress);
     const walletTokens = balanceData?.data?.balance?.tokens || [];
+    const solBalance = parseFloat(balanceData?.data?.balance?.sol?.amount_sol || 0);
+
+    // 1. SOL 가스비 체크 및 자동 충전 (0.02 SOL 미만일 때 $5치 충전)
+    if (solBalance < 0.02) {
+      console.log(`│     * Gas low: ${solBalance.toFixed(4)} SOL. Recharging from USDC...`);
+      const dryRunFlag = config.dryRun ? "--dry-run" : "--confirm";
+      try {
+        runCliJson(`swap execute --input-mint ${USDC_MINT} --output-mint So11111111111111111111111111111111111111112 --amount 5 ${dryRunFlag}`, privateKey, walletAddress);
+      } catch (e: any) {
+        console.error(`│     * Gas recharge failed:`, e.message || e);
+      }
+    }
+
     const tokenListFull = runCliJson("tokens list", privateKey, walletAddress);
     const tokenMap: Record<string, any> = {};
     (tokenListFull?.data?.tokens || []).forEach((t: any) => {
       tokenMap[t.mint] = t;
     });
 
+    // 2. 다른 설정된 토큰들 충전
     for (const confMint of configTokens) {
+      if (confMint === USDC_MINT) continue; // USDC는 충전 대상에서 제외
       const myToken = walletTokens.find((t: any) => t.mint === confMint);
       const balanceUi = parseFloat(myToken?.amount_ui || 0);
       const priceUsd = parseFloat(tokenMap[confMint]?.price_usd || 0);
       const valueUsd = balanceUi * priceUsd;
 
-      if (valueUsd < 2) { // 임계치 $2 고정 (config에 따라 다를 수 있음)
+      if (valueUsd < 2) {
         console.log(`│     * Asset low: ${confMint.substring(0, 8)}... ($${valueUsd.toFixed(2)}). Recharging...`);
         const dryRunFlag = config.dryRun ? "--dry-run" : "--confirm";
         runCliJson(`swap execute --input-mint ${USDC_MINT} --output-mint ${confMint} --amount 5 ${dryRunFlag}`, privateKey, walletAddress);
