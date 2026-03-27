@@ -211,6 +211,24 @@ router.get("/pools/all", async (req, res) => {
   }
 });
 
+// DEX 전체 토큰 목록 조회 (검색용, 인증 없음)
+router.get("/tokens/all", async (req, res) => {
+  try {
+    const data = runCliJson("tokens list -o json");
+    const tokens = (data?.data?.tokens || []).map((t: any) => ({
+      name: t.name || t.symbol || "Unknown",
+      symbol: t.symbol || "UNKNOWN",
+      mint: t.mint,
+      price: parseFloat(t.price_usd || 0),
+      decimals: t.decimals || 0,
+      logo: t.logo_uri || "",
+    }));
+    res.json({ success: true, data: tokens });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // 풀 및 토큰 조회
 router.get("/pools", authenticate, async (req: AuthRequest, res) => {
   try {
