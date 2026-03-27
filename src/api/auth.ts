@@ -54,13 +54,15 @@ router.post("/nonce", async (req, res) => {
 router.post("/login", async (req, res) => {
   const { walletAddress, signature } = req.body;
 
-  const user = await prisma.user.findUnique({ where: { walletAddress } });
-  if (!user) return res.status(404).json({ error: "User not found" });
-
   try {
-    const messageBytes = new TextEncoder().encode(
-      `Sign this message to authenticate dashboard: ${user.nonce}`,
-    );
+    const user = await prisma.user.findUnique({ where: { walletAddress } });
+    if (!user) {
+      console.error(`[AUTH_ERROR] User not found for wallet: ${walletAddress}`);
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const message = `Sign this message to authenticate dashboard: ${user.nonce}`;
+    const messageBytes = new TextEncoder().encode(message);
     const signatureBytes = bs58.decode(signature);
     const publicKeyBytes = bs58.decode(walletAddress);
 
@@ -69,15 +71,19 @@ router.post("/login", async (req, res) => {
       signatureBytes,
       publicKeyBytes,
     );
+
     if (!isValid) {
+      console.error(`[AUTH_FAIL] Invalid signature from wallet: ${walletAddress}`);
+      console.log(`[AUTH_DEBUG] Expected Message: "${message}"`);
       return res.status(401).json({ error: "Invalid signature" });
     }
-  } catch (err) {
-    return res.status(400).json({ error: "Signature format is invalid" });
-  }
 
-  const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
-  res.json({ token });
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
+    res.json({ token });
+  } catch (err: any) {
+    console.error(`[AUTH_CRITICAL] Error during login for wallet: ${walletAddress}`, err.message || err);
+    return res.status(400).json({ error: "Signature verification failed" });
+  }
 });
 
 export default router;
