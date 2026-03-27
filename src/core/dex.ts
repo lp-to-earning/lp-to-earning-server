@@ -1,7 +1,7 @@
 import { execSync } from "child_process";
 
 export function runCliJson(args: string, privateKey?: string, walletAddress?: string): any {
-  const homeDir = walletAddress ? `/tmp/byreal-${walletAddress}` : process.env.HOME || "/root";
+  const homeDir = walletAddress ? `/tmp/byreal-${walletAddress}-${Date.now()}` : process.env.HOME || "/root";
   const cmdArgs = args.includes("-o json") ? args : `${args} -o json`;
 
   try {
@@ -9,12 +9,14 @@ export function runCliJson(args: string, privateKey?: string, walletAddress?: st
       execSync(`mkdir -p ${homeDir} && HOME=${homeDir} byreal-cli wallet set --private-key ${privateKey} --non-interactive`, {
         encoding: "utf8",
         stdio: ["pipe", "pipe", "pipe"],
+        timeout: 10000,
       });
     }
 
     const raw = execSync(`HOME=${homeDir} byreal-cli ${cmdArgs}`, {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
+      timeout: 30000,
     });
 
     const lines = raw.split("\n");
@@ -48,26 +50,40 @@ export function runCliJson(args: string, privateKey?: string, walletAddress?: st
       if (jsonMatch) return JSON.parse(jsonMatch[0]);
     } catch (parseErr) {}
     throw e;
+  } finally {
+    if (walletAddress) {
+      try {
+        execSync(`rm -rf ${homeDir}`, { stdio: "pipe" });
+      } catch (rmErr) {}
+    }
   }
 }
 
 export function runCliText(args: string, privateKey?: string, walletAddress?: string): string {
-  const homeDir = walletAddress ? `/tmp/byreal-${walletAddress}` : process.env.HOME || "/root";
+  const homeDir = walletAddress ? `/tmp/byreal-${walletAddress}-${Date.now()}` : process.env.HOME || "/root";
 
   try {
     if (privateKey && walletAddress) {
       execSync(`mkdir -p ${homeDir} && HOME=${homeDir} byreal-cli wallet set --private-key ${privateKey} --non-interactive`, {
         encoding: "utf8",
         stdio: ["pipe", "pipe", "pipe"],
+        timeout: 10000,
       });
     }
 
     return execSync(`HOME=${homeDir} byreal-cli ${args}`, {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
+      timeout: 30000,
     });
   } catch (e: any) {
     throw e;
+  } finally {
+    if (walletAddress) {
+      try {
+        execSync(`rm -rf ${homeDir}`, { stdio: "pipe" });
+      } catch (rmErr) {}
+    }
   }
 }
 
