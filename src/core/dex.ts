@@ -1,19 +1,28 @@
 import { execSync } from "child_process";
 
-export function runCliJson(args: string, privateKey?: string, walletAddress?: string): any {
-  const homeDir = walletAddress ? `/tmp/byreal-${walletAddress}-${Date.now()}` : process.env.HOME || "/root";
+export function runCliJson(
+  args: string,
+  privateKey?: string,
+  walletAddress?: string,
+): any {
+  const homeDir = walletAddress
+    ? `/tmp/byreal-${walletAddress}-${Date.now()}`
+    : process.env.HOME || "/root";
   const cmdArgs = args.includes("-o json") ? args : `${args} -o json`;
 
   try {
     if (privateKey && walletAddress) {
-      execSync(`mkdir -p ${homeDir} && HOME=${homeDir} byreal-cli wallet set --private-key ${privateKey} --non-interactive`, {
-        encoding: "utf8",
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: 10000,
-      });
+      execSync(
+        `mkdir -p ${homeDir} && HOME=${homeDir} /usr/local/bin/byreal-cli wallet set --private-key ${privateKey} --non-interactive`,
+        {
+          encoding: "utf8",
+          stdio: ["pipe", "pipe", "pipe"],
+          timeout: 10000,
+        },
+      );
     }
 
-    const raw = execSync(`HOME=${homeDir} byreal-cli ${cmdArgs}`, {
+    const raw = execSync(`HOME=${homeDir} /usr/local/bin/byreal-cli ${cmdArgs}`, {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 30000,
@@ -59,19 +68,28 @@ export function runCliJson(args: string, privateKey?: string, walletAddress?: st
   }
 }
 
-export function runCliText(args: string, privateKey?: string, walletAddress?: string): string {
-  const homeDir = walletAddress ? `/tmp/byreal-${walletAddress}-${Date.now()}` : process.env.HOME || "/root";
+export function runCliText(
+  args: string,
+  privateKey?: string,
+  walletAddress?: string,
+): string {
+  const homeDir = walletAddress
+    ? `/tmp/byreal-${walletAddress}-${Date.now()}`
+    : process.env.HOME || "/root";
 
   try {
     if (privateKey && walletAddress) {
-      execSync(`mkdir -p ${homeDir} && HOME=${homeDir} byreal-cli wallet set --private-key ${privateKey} --non-interactive`, {
-        encoding: "utf8",
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: 10000,
-      });
+      execSync(
+        `mkdir -p ${homeDir} && HOME=${homeDir} /usr/local/bin/byreal-cli wallet set --private-key ${privateKey} --non-interactive`,
+        {
+          encoding: "utf8",
+          stdio: ["pipe", "pipe", "pipe"],
+          timeout: 10000,
+        },
+      );
     }
 
-    return execSync(`HOME=${homeDir} byreal-cli ${args}`, {
+    return execSync(`HOME=${homeDir} /usr/local/bin/byreal-cli ${args}`, {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 30000,
@@ -87,13 +105,20 @@ export function runCliText(args: string, privateKey?: string, walletAddress?: st
   }
 }
 
-export function getMyPositions(privateKey?: string, walletAddress?: string): any[] {
+export function getMyPositions(
+  privateKey?: string,
+  walletAddress?: string,
+): any[] {
   const allPos: any[] = [];
   let page = 1;
   const pageSize = 50;
   while (true) {
     try {
-      const data = runCliJson(`positions list --page ${page} --page-size ${pageSize}`, privateKey, walletAddress);
+      const data = runCliJson(
+        `positions list --page ${page} --page-size ${pageSize}`,
+        privateKey,
+        walletAddress,
+      );
       const pos = data?.data?.positions ?? [];
       if (pos.length === 0) break;
       allPos.push(...pos);
