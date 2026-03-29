@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: lp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lp_admin
+      POSTGRES_PASSWORD: lp_password_secret
+      POSTGRES_DB: lp_bot_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  
+  dashboard-server:
+    image: ghcr.io/lp-to-earning/lp-to-earning-server:latest
+    command: sh -c "npx prisma migrate deploy && npm start"
+    container_name: dashboard-server
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - BOT_MASTER_KEY=${BOT_MASTER_KEY}
+      - DATABASE_URL=postgresql://lp_admin:lp_password_secret@postgres:5432/lp_bot_db?schema=public
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+
+volumes:
+  postgres_data:

@@ -8,6 +8,12 @@ import { encrypt, decrypt } from "../lib/crypto";
 const router = Router();
 
 // ==========================================
+// 0. Cache Config (To speed up slow CLI queries)
+// ==========================================
+const cache: Record<string, { time: number; data: any }> = {};
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5분 캐시
+
+// ==========================================
 // 1. 개인키 보안 등록
 // ==========================================
 router.post("/private-key", authenticate, async (req: AuthRequest, res) => {
@@ -196,7 +202,14 @@ router.get("/positions", authenticate, async (req: AuthRequest, res) => {
 // DEX 전체 풀 목록 조회 (검색용, 인증 없음)
 router.get("/pools/all", async (req, res) => {
   try {
-    const data = runCliJson("pools list -o json");
+    const cacheKey = "pools list -o json";
+    let data;
+    if (cache[cacheKey] && Date.now() - cache[cacheKey].time < CACHE_TTL_MS) {
+      data = cache[cacheKey].data;
+    } else {
+      data = runCliJson(cacheKey);
+      cache[cacheKey] = { time: Date.now(), data };
+    }
     const pools = (data?.data?.pools || []).map((p: any) => ({
       name: p.pair || "Unknown",
       address: p.id,
@@ -218,7 +231,14 @@ router.get("/pools/all", async (req, res) => {
 // DEX 전체 토큰 목록 조회 (검색용, 인증 없음)
 router.get("/tokens/all", async (req, res) => {
   try {
-    const data = runCliJson("tokens list -o json");
+    const cacheKey = "tokens list -o json";
+    let data;
+    if (cache[cacheKey] && Date.now() - cache[cacheKey].time < CACHE_TTL_MS) {
+      data = cache[cacheKey].data;
+    } else {
+      data = runCliJson(cacheKey);
+      cache[cacheKey] = { time: Date.now(), data };
+    }
     const tokens = (data?.data?.tokens || []).map((t: any) => ({
       name: t.name || t.symbol || "Unknown",
       symbol: t.symbol || "UNKNOWN",
@@ -253,11 +273,19 @@ router.get("/pools", authenticate, async (req: AuthRequest, res) => {
     const poolsArr = (user?.config?.pools as string[]) || [];
 
     const pools = poolsArr.map((addr) => {
-      const data = runCliJson(
-        `pools info ${addr}`,
-        decryptedKey,
-        user?.walletAddress,
-      );
+      const cacheKey = `pools info ${addr}`;
+      let data;
+      if (cache[cacheKey] && Date.now() - cache[cacheKey].time < CACHE_TTL_MS) {
+        data = cache[cacheKey].data;
+      } else {
+        data = runCliJson(
+          cacheKey,
+          decryptedKey,
+          user?.walletAddress,
+        );
+        cache[cacheKey] = { time: Date.now(), data };
+      }
+      
       const p = data?.data?.pool ?? {};
       return {
         name: p.pair || "Unknown",

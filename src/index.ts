@@ -42,8 +42,8 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
-// 3. 백그라운드 스케줄러 (1분 간격)
-setInterval(runBotTask, 60 * 1000);
+// 3. 백그라운드 스케줄러 (30분 간격)
+setInterval(runBotTask, 30 * 60 * 1000);
 
 // 4. 서버 시작
 app.listen(PORT, () => {

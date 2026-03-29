@@ -8,7 +8,6 @@ export function runCliJson(
   const homeDir = walletAddress
     ? `/tmp/byreal-${walletAddress}-${Date.now()}`
     : process.env.HOME || "/root";
-  console.log(`[CLI_JSON] Wallet: ${walletAddress} | Shell: HOME=${homeDir}`);
   const cmdArgs = args.includes("-o json") ? args : `${args} -o json`;
 
   try {
@@ -77,8 +76,6 @@ export function runCliText(
   const homeDir = walletAddress
     ? `/tmp/byreal-${walletAddress}-${Date.now()}`
     : process.env.HOME || "/root";
-  console.log(`[CLI_TEXT] Wallet: ${walletAddress} | Shell: HOME=${homeDir}`);
-
   try {
     if (privateKey && walletAddress) {
       execSync(
