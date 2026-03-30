@@ -48,5 +48,4 @@ setInterval(runBotTask, 30 * 60 * 1000);
 // 4. 서버 시작
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
-  runBotTask(); // 초기 실행
 });

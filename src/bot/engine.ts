@@ -9,7 +9,16 @@ import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 
 export async function runBotTask() {
-  console.log("── 🤖 [BOT Engine] Cycle Started ──");
+  const nowKst = new Date().toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  console.log(`── 🤖 [BOT Engine] [${nowKst} KST] Cycle Started (Interval: 30m) ──`);
 
   // 기존 환경변수 백업
   const originalKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
