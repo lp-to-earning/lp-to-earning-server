@@ -68,6 +68,7 @@ router.post("/config", authenticate, async (req: AuthRequest, res) => {
     minAprPercent,
     intervalMs,
     dryRun,
+    isAutoRebalance,
     pools,
     autoRechargeTokens,
   } = req.body;
@@ -95,6 +96,7 @@ router.post("/config", authenticate, async (req: AuthRequest, res) => {
     ...(minAprPercent !== undefined && { minAprPercent }),
     ...(intervalMs !== undefined && { intervalMs }),
     ...(dryRun !== undefined && { dryRun }),
+    ...(isAutoRebalance !== undefined && { isAutoRebalance }),
     ...(pools !== undefined && { pools: sanitizeArr(pools) }),
     ...(autoRechargeTokens !== undefined && {
       autoRechargeTokens: sanitizeArr(autoRechargeTokens),
@@ -278,14 +280,10 @@ router.get("/pools", authenticate, async (req: AuthRequest, res) => {
       if (cache[cacheKey] && Date.now() - cache[cacheKey].time < CACHE_TTL_MS) {
         data = cache[cacheKey].data;
       } else {
-        data = runCliJson(
-          cacheKey,
-          decryptedKey,
-          user?.walletAddress,
-        );
+        data = runCliJson(cacheKey, decryptedKey, user?.walletAddress);
         cache[cacheKey] = { time: Date.now(), data };
       }
-      
+
       const p = data?.data?.pool ?? {};
       return {
         name: p.pair || "Unknown",

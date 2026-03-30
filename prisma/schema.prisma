@@ -35,6 +35,7 @@ model UserConfig {
   
   copyAmountUsd       Float    @default(3.0)
   dryRun              Boolean  @default(false)
+  isAutoRebalance     Boolean  @default(true)
   intervalMs          Int      @default(1800000)
   
   pools               Json     @default("[]") 
