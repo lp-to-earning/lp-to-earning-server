@@ -27,40 +27,38 @@ export async function runBotTask() {
         continue;
       }
 
-      // === [Wallet Switching] 유저별 지갑 키 적용 ===
+      // === [Wallet Switching] 유저별 지갑 키 적용 (Hybrid: User Key or Hot Wallet) ===
       let hasValidKey = false;
-      if (user.encryptedPrivateKey && user.iv && user.authTag) {
-        try {
-          const decryptedKey = decrypt(
-            user.encryptedPrivateKey,
-            user.iv,
-            user.authTag,
-          );
-          process.env.SOLANA_WALLET_PRIVATE_KEY = decryptedKey;
+      let activePrivateKey = "";
+      let activeWalletAddress = user.walletAddress;
+
+      try {
+        if (user.isManaged && user.hotPrivateKey && user.hotIv && user.hotAuthTag) {
+          // 1. 서버 관리형 핫월렛 사용
+          activePrivateKey = decrypt(user.hotPrivateKey, user.hotIv, user.hotAuthTag);
+          activeWalletAddress = user.hotWalletAddress || user.walletAddress;
           hasValidKey = true;
-          console.log(
-            `│ [User] Switching to dedicated wallet: ${user.walletAddress}...`,
-          );
-        } catch (decErr) {
-          console.error(
-            `│ ❌ [User] Decryption failed for ${user.walletAddress}:`,
-            decErr,
-          );
+          console.log(`│ [User] Using Managed Hot Wallet: ${activeWalletAddress}...`);
+        } else if (user.encryptedPrivateKey && user.iv && user.authTag) {
+          // 2. 유저 입력형 개별 키 사용
+          activePrivateKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
+          hasValidKey = true;
+          console.log(`│ [User] Using Shared/Personal Wallet: ${activeWalletAddress}...`);
+        } else if (originalKey) {
+          // 3. (Fallback) 서버 마스터 공유 지갑 사용
+          activePrivateKey = originalKey;
+          hasValidKey = true;
+          console.log(`│ [User] Using Server Root Wallet for: ${activeWalletAddress}...`);
+        }
+
+        if (hasValidKey) {
+          process.env.SOLANA_WALLET_PRIVATE_KEY = activePrivateKey;
+        } else {
+          console.warn(`│ ⚠️ [User] No private key found for ${user.walletAddress}. Skipping...`);
           continue;
         }
-      } else if (originalKey) {
-        // 개별 키가 없으면 원래 서버 키 사용
-        process.env.SOLANA_WALLET_PRIVATE_KEY = originalKey;
-        hasValidKey = true;
-        console.log(
-          `│ [User] Using shared master wallet for: ${user.walletAddress}...`,
-        );
-      }
-
-      if (!hasValidKey) {
-        console.warn(
-          `│ ⚠️ [User] No private key found for ${user.walletAddress}. Skipping...`,
-        );
+      } catch (decErr) {
+        console.error(`│ ❌ [User] Decryption failed for ${user.walletAddress}:`, decErr);
         continue;
       }
       // ===========================================

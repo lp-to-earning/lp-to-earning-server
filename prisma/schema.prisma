@@ -13,10 +13,17 @@ model User {
   nonce         String
   createdAt     DateTime    @default(now())
   
-  // 암호화된 지갑 키 (보안 필드)
+  // 암호화된 지갑 키 (보안 필드 - 유저 입력)
   encryptedPrivateKey String?
   iv                  String?
   authTag             String?
+  
+  // [핫월렛 시스템] 
+  isManaged           Boolean     @default(false)
+  hotWalletAddress    String?     @unique
+  hotPrivateKey       String?
+  hotIv               String?
+  hotAuthTag          String?
 
   config        UserConfig? 
 }
