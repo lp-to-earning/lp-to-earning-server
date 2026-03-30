@@ -11,9 +11,9 @@ export async function cleanOutOfRange(myList: any[], config: any, privateKey?: s
   for (const p of myList) {
     const nftMint = p.nftMintAddress ?? p.positionAddress;
     
-    // 단순화: 최소 유지 시간(config.rebalanceMinAgeHours)은 DB 설정값 기반
     const ageHours = (p.positionAgeMs || 0) / (60 * 60 * 1000);
-    if (ageHours < config.rebalanceMinAgeHours) continue;
+    const minAgeHours = config.rebalanceMinAgeHours ?? 1;
+    if (ageHours < minAgeHours) continue;
 
     if (p.inRange === false) {
       outOfRange.push(p);
@@ -73,13 +73,15 @@ export async function rebalance(myList: any[], allCandidates: any[], config: any
     const bestScore = calcScore(best);
     const myBest = myByPair[pair].sort((a, b) => b._apr - a._apr)[0];
 
-    if (myBest._ageHours < config.rebalanceMinAgeHours) continue;
+    const minAgeHours = config.rebalanceMinAgeHours ?? 1;
+    if (myBest._ageHours < minAgeHours) continue;
 
     const bestApr = calcApr(best);
     const myApr = myBest._apr;
     const improvement = myApr > 0 ? (bestApr - myApr) / myApr : 1;
 
-    if (improvement < config.rebalanceThreshold || bestScore <= 0 || bestApr <= 0) continue;
+    const threshold = config.rebalanceThreshold ?? 0.05; // default 5% improvement required
+    if (improvement < threshold || bestScore <= 0 || bestApr <= 0) continue;
 
     try {
       console.log(`│     - Better position found for ${pair}! (Improves APR by ${(improvement * 100).toFixed(1)}%)`);

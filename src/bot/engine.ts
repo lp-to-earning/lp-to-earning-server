@@ -2,7 +2,7 @@ import { prisma } from "../lib/db";
 import { runCliJson, runCliText, getMyPositions } from "../core/dex";
 import { calcApr, calcScore, SORT_FN } from "../core/position";
 import { cleanOutOfRange, rebalance } from "../core/rebalance";
-import { rechargeTokens } from "../core/swap";
+import { rechargeTokens, balanceWallet } from "../core/swap";
 
 import { decrypt } from "../lib/crypto";
 
@@ -69,7 +69,12 @@ export async function runBotTask() {
 
       try {
         // 1. 사전 자산 체크 및 충전
-        console.log(`│ [Step 1] Checking assets and recharging...`);
+        console.log(`│ [Step 1] Checking assets and balancing 5:5...`);
+        await balanceWallet(
+          config,
+          process.env.SOLANA_WALLET_PRIVATE_KEY,
+          user.walletAddress,
+        );
         await rechargeTokens(
           config,
           process.env.SOLANA_WALLET_PRIVATE_KEY,
@@ -163,19 +168,23 @@ export async function runBotTask() {
           user.walletAddress,
         );
         console.log(`│   - Current positions: ${myList.length}`);
-        await cleanOutOfRange(
-          myList,
-          config,
-          process.env.SOLANA_WALLET_PRIVATE_KEY,
-          user.walletAddress,
-        );
-        await rebalance(
-          myList,
-          allCandidates,
-          config,
-          process.env.SOLANA_WALLET_PRIVATE_KEY,
-          user.walletAddress,
-        );
+        if (config.isAutoRebalance) {
+          await cleanOutOfRange(
+            myList,
+            config,
+            process.env.SOLANA_WALLET_PRIVATE_KEY,
+            user.walletAddress,
+          );
+          await rebalance(
+            myList,
+            allCandidates,
+            config,
+            process.env.SOLANA_WALLET_PRIVATE_KEY,
+            user.walletAddress,
+          );
+        } else {
+          console.log(`│   - isAutoRebalance is OFF. Skipping management.`);
+        }
       } catch (userErr) {
         console.error(`│ ❌ [User] ${user.walletAddress} failed:`, userErr);
       }
