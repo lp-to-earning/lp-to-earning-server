@@ -326,7 +326,13 @@ router.get("/positions", authenticate, async (req: AuthRequest, res) => {
     });
 
     let decryptedKey: string | undefined = undefined;
-    if (user?.encryptedPrivateKey && user.iv && user.authTag) {
+    const targetAddress = user?.hotWalletAddress || user?.walletAddress;
+
+    if (user?.isManaged && user.hotPrivateKey && user.hotIv && user.hotAuthTag) {
+      try {
+        decryptedKey = decrypt(user.hotPrivateKey, user.hotIv, user.hotAuthTag);
+      } catch (e) {}
+    } else if (user?.encryptedPrivateKey && user.iv && user.authTag) {
       try {
         decryptedKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
       } catch (e) {}
@@ -334,7 +340,7 @@ router.get("/positions", authenticate, async (req: AuthRequest, res) => {
       decryptedKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
     }
 
-    const myList = getMyPositions(decryptedKey, user?.walletAddress);
+    const myList = getMyPositions(decryptedKey, targetAddress);
     const positions = (myList || []).map((p: any) => ({
       nftMintAddress: p.nftMintAddress ?? p.positionAddress,
       positionAddress: p.positionAddress,
