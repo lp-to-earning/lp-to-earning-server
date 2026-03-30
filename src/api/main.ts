@@ -104,9 +104,9 @@ router.post("/hot-wallet/create", authenticate, async (req: AuthRequest, res) =>
   }
 });
 
-// 핫월렛 부분 출금 (SOL 또는 모든 SPL 토큰)
+// 핫월렛 부분/전액 출금 (isMax 지원)
 router.post("/withdraw", authenticate, async (req: AuthRequest, res) => {
-  const { mint, amount, amountSol } = req.body;
+  const { mint, amount, amountSol, isMax } = req.body;
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
 
   if (!user || !user.hotWalletAddress || !user.hotPrivateKey) {
@@ -120,30 +120,54 @@ router.post("/withdraw", authenticate, async (req: AuthRequest, res) => {
     const toPubkey = new PublicKey(user.walletAddress);
     const transaction = new Transaction();
 
-    // 1. SPL 토큰 부분 출금 (mint 주소 제공 시)
-    if (mint && amount && amount > 0) {
+    // 1. SPL 토큰 출금 (mint 주소 제공 시)
+    if (mint) {
       const tokenMint = new PublicKey(mint);
       const fromAta = await getAssociatedTokenAddress(tokenMint, kp.publicKey);
       const toAta = await getAssociatedTokenAddress(tokenMint, toPubkey);
-      
-      // 토큰 소수점 자동 인식
       const mintInfo = await getMint(connection, tokenMint);
-      const rawAmount = BigInt(Math.floor(amount * 10 ** mintInfo.decimals));
 
-      transaction.add(
-        createTransferCheckedInstruction(
-          fromAta,
-          tokenMint,
-          toAta,
-          kp.publicKey,
-          rawAmount,
-          mintInfo.decimals
-        )
-      );
+      let finalAmount: bigint;
+      if (isMax) {
+        const balanceObj = await connection.getTokenAccountBalance(fromAta);
+        finalAmount = BigInt(balanceObj.value.amount);
+      } else if (amount && amount > 0) {
+        finalAmount = BigInt(Math.floor(amount * 10 ** mintInfo.decimals));
+      } else {
+        finalAmount = 0n;
+      }
+
+      if (finalAmount > 0n) {
+        transaction.add(
+          createTransferCheckedInstruction(
+            fromAta,
+            tokenMint,
+            toAta,
+            kp.publicKey,
+            finalAmount,
+            mintInfo.decimals
+          )
+        );
+      }
     }
 
-    // 2. SOL 부분 출금
-    if (amountSol && amountSol > 0) {
+    // 2. SOL 출금
+    if (isMax && !mint) {
+      const balance = await connection.getBalance(kp.publicKey);
+      const fee = 5000; // 0.000005 SOL
+      const rentExempt = await connection.getMinimumBalanceForRentExemption(0);
+      const toTransfer = balance - fee; // 렌트비까지 다 뺀다 (지갑 폐쇄급 전액 인출)
+
+      if (toTransfer > 0) {
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: kp.publicKey,
+            toPubkey: toPubkey,
+            lamports: toTransfer,
+          })
+        );
+      }
+    } else if (amountSol && amountSol > 0) {
       const rawSolAmount = Math.floor(amountSol * LAMPORTS_PER_SOL);
       transaction.add(
         SystemProgram.transfer({
@@ -311,6 +335,47 @@ router.post("/config", authenticate, async (req: AuthRequest, res) => {
   } catch (e) {
     console.error("[POST /api/config]", e);
     res.status(500).json({ success: false, error: "Failed to save config." });
+  }
+});
+
+// 핫월렛 전체 잔고 조회 (SOL + SPL 토큰)
+router.get("/balances", authenticate, async (req: AuthRequest, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user || (!user.walletAddress && !user.hotWalletAddress)) {
+      return res.status(400).json({ error: "No wallet address found." });
+    }
+
+    const targetAddress = user.hotWalletAddress || user.walletAddress;
+    const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+
+    // 1. SOL 잔액 조회
+    const solBalance = await connection.getBalance(new PublicKey(targetAddress));
+
+    // 2. 모든 SPL 토큰 잔액 조회
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+      new PublicKey(targetAddress),
+      { programId: TOKEN_PROGRAM_ID }
+    );
+
+    const tokens = tokenAccounts.value.map((ta: any) => {
+      const info = ta.account.data.parsed.info;
+      return {
+        mint: info.mint,
+        amount: info.tokenAmount.uiAmount,
+        decimals: info.tokenAmount.decimals,
+      };
+    }).filter(t => t.amount > 0);
+
+    res.json({
+      success: true,
+      address: targetAddress,
+      sol: solBalance / LAMPORTS_PER_SOL,
+      tokens,
+    });
+  } catch (e: any) {
+    console.error("[GET /api/balances]", e);
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
