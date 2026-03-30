@@ -4,6 +4,9 @@ import { authenticate, AuthRequest } from "../middleware/auth";
 import { runCliJson, getMyPositions } from "../core/dex";
 import { calcApr, calcScore } from "../core/position";
 import { encrypt, decrypt } from "../lib/crypto";
+import { Connection, Keypair, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import bs58 from "bs58";
+import { TOKEN_PROGRAM_ID, createTransferCheckedInstruction, getAssociatedTokenAddress, getMint } from "@solana/spl-token";
 
 const router = Router();
 
@@ -56,7 +59,177 @@ router.get("/config", authenticate, async (req: AuthRequest, res) => {
   res.json({
     config: user?.config,
     hasPrivateKey: !!user?.encryptedPrivateKey,
+    isManaged: user?.isManaged,
+    hotWalletAddress: user?.hotWalletAddress,
   });
+});
+
+// 핫월렛 수동 생성 (명시적 발급)
+router.post("/hot-wallet/create", authenticate, async (req: AuthRequest, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (user.hotWalletAddress && user.hotPrivateKey) {
+      return res.json({ 
+        success: true, 
+        message: "Hot wallet already exists.", 
+        address: user.hotWalletAddress 
+      });
+    }
+
+    const kp = Keypair.generate();
+    const privKey = bs58.encode(kp.secretKey);
+    const { encrypted, iv, authTag } = encrypt(privKey);
+
+    const updated = await prisma.user.update({
+      where: { id: req.userId },
+      data: {
+        hotWalletAddress: kp.publicKey.toBase58(),
+        hotPrivateKey: encrypted,
+        hotIv: iv,
+        hotAuthTag: authTag,
+        isManaged: true
+      }
+    });
+
+    res.json({
+      success: true,
+      message: "Hot wallet generated successfully.",
+      address: updated.hotWalletAddress
+    });
+  } catch (e: any) {
+    console.error("[POST /hot-wallet/create]", e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 핫월렛 부분 출금 (SOL 또는 모든 SPL 토큰)
+router.post("/withdraw", authenticate, async (req: AuthRequest, res) => {
+  const { mint, amount, amountSol } = req.body;
+  const user = await prisma.user.findUnique({ where: { id: req.userId } });
+
+  if (!user || !user.hotWalletAddress || !user.hotPrivateKey) {
+    return res.status(400).json({ error: "No managed hot wallet found." });
+  }
+
+  try {
+    const privKeyStr = decrypt(user.hotPrivateKey, user.hotIv!, user.hotAuthTag!);
+    const kp = Keypair.fromSecretKey(bs58.decode(privKeyStr));
+    const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+    const toPubkey = new PublicKey(user.walletAddress);
+    const transaction = new Transaction();
+
+    // 1. SPL 토큰 부분 출금 (mint 주소 제공 시)
+    if (mint && amount && amount > 0) {
+      const tokenMint = new PublicKey(mint);
+      const fromAta = await getAssociatedTokenAddress(tokenMint, kp.publicKey);
+      const toAta = await getAssociatedTokenAddress(tokenMint, toPubkey);
+      
+      // 토큰 소수점 자동 인식
+      const mintInfo = await getMint(connection, tokenMint);
+      const rawAmount = BigInt(Math.floor(amount * 10 ** mintInfo.decimals));
+
+      transaction.add(
+        createTransferCheckedInstruction(
+          fromAta,
+          tokenMint,
+          toAta,
+          kp.publicKey,
+          rawAmount,
+          mintInfo.decimals
+        )
+      );
+    }
+
+    // 2. SOL 부분 출금
+    if (amountSol && amountSol > 0) {
+      const rawSolAmount = Math.floor(amountSol * LAMPORTS_PER_SOL);
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: kp.publicKey,
+          toPubkey: toPubkey,
+          lamports: rawSolAmount,
+        })
+      );
+    }
+
+    if (transaction.instructions.length === 0) {
+      return res.status(400).json({ error: "No withdrawal amounts or valid mint specified." });
+    }
+
+    const txHash = await connection.sendTransaction(transaction, [kp]);
+    res.json({ success: true, message: "Withdrawal successful.", txHash });
+  } catch (e: any) {
+    console.error("[POST /api/withdraw]", e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 핫월렛 출금 (SOL & USDC 전용 고도화)
+router.post("/withdraw-all", authenticate, async (req: AuthRequest, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.userId } });
+  if (!user || !user.hotWalletAddress || !user.hotPrivateKey) {
+    return res.status(400).json({ error: "No managed hot wallet found." });
+  }
+
+  try {
+    const privKeyStr = decrypt(user.hotPrivateKey, user.hotIv!, user.hotAuthTag!);
+    const kp = Keypair.fromSecretKey(bs58.decode(privKeyStr));
+    const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+    const toPubkey = new PublicKey(user.walletAddress);
+    const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+
+    const transaction = new Transaction();
+
+    // 1. USDC 잔액 확인 및 출금
+    const fromAta = await getAssociatedTokenAddress(USDC_MINT, kp.publicKey);
+    const toAta = await getAssociatedTokenAddress(USDC_MINT, toPubkey);
+
+    const fromAtaInfo = await connection.getAccountInfo(fromAta);
+    if (fromAtaInfo) {
+      const balanceObj = await connection.getTokenAccountBalance(fromAta);
+      const amount = BigInt(balanceObj.value.amount);
+      if (amount > 0n) {
+        transaction.add(
+          createTransferCheckedInstruction(
+            fromAta,
+            USDC_MINT,
+            toAta,
+            kp.publicKey,
+            amount,
+            6
+          )
+        );
+      }
+    }
+
+    // 2. SOL 잔액 확인 및 전액 출금 (수수료 제외)
+    const balance = await connection.getBalance(kp.publicKey);
+    const rentExempt = await connection.getMinimumBalanceForRentExemption(0);
+    const fee = 10000; // 0.00001 SOL
+    const amountToTransfer = balance - rentExempt - fee;
+
+    if (amountToTransfer > 0) {
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: kp.publicKey,
+          toPubkey: toPubkey,
+          lamports: amountToTransfer,
+        })
+      );
+    }
+
+    if (transaction.instructions.length === 0) {
+      return res.json({ success: true, message: "No funds to withdraw." });
+    }
+
+    const txHash = await connection.sendTransaction(transaction, [kp]);
+    res.json({ success: true, message: "SOL & USDC withdrawal successful.", txHash });
+  } catch (e: any) {
+    console.error("[POST /api/withdraw-all]", e);
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // 봇 설정 변경

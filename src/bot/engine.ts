@@ -34,38 +34,29 @@ export async function runBotTask() {
       let activeWalletAddress = "";
 
       try {
-        // [Provisioning] 핫월렛이 없으면 즉석 발급
+        // [Provisioning Check] 핫월렛이 없으면 스킵 (수동 생성 전용)
         if (!user.hotWalletAddress || !user.hotPrivateKey) {
-          console.log(`│ [User] No hot wallet found for ${user.walletAddress}. Generating...`);
-          const kp = Keypair.generate();
-          const privKey = bs58.encode(kp.secretKey);
-          const encrypted = encrypt(privKey);
-
-          // DB에 핫월렛 정보 즉시 기록 (isManaged 강제 활성화)
-          await prisma.user.update({
-            where: { id: user.id },
-            data: {
-              hotWalletAddress: kp.publicKey.toBase58(),
-              hotPrivateKey: encrypted.encrypted,
-              hotIv: encrypted.iv,
-              hotAuthTag: encrypted.authTag,
-              isManaged: true,
-            },
-          });
-
-          activePrivateKey = privKey;
-          activeWalletAddress = kp.publicKey.toBase58();
-          console.log(`│ [User] Hot wallet generated: ${activeWalletAddress}`);
+          console.warn(
+            `│ ⚠️ [User] No hot wallet found for ${user.walletAddress}. Please create one via Dashboard.`,
+          );
+          continue;
         } else {
           // 이미 핫월렛이 있으면 복호화해서 사용
-          activePrivateKey = decrypt(user.hotPrivateKey, user.hotIv!, user.hotAuthTag!);
+          activePrivateKey = decrypt(
+            user.hotPrivateKey,
+            user.hotIv!,
+            user.hotAuthTag!,
+          );
           activeWalletAddress = user.hotWalletAddress;
           console.log(`│ [User] Using Hot Wallet: ${activeWalletAddress}`);
         }
 
         process.env.SOLANA_WALLET_PRIVATE_KEY = activePrivateKey;
       } catch (err) {
-        console.error(`│ ❌ [User] Wallet initialization failed for ${user.walletAddress}:`, err);
+        console.error(
+          `│ ❌ [User] Wallet initialization failed for ${user.walletAddress}:`,
+          err,
+        );
         continue;
       }
       // ===========================================
@@ -75,16 +66,8 @@ export async function runBotTask() {
       try {
         // 1. 사전 자산 체크 및 충전
         console.log(`│ [Step 1] Checking assets and balancing 5:5...`);
-        await balanceWallet(
-          config,
-          process.env.SOLANA_WALLET_PRIVATE_KEY,
-          user.walletAddress,
-        );
-        await rechargeTokens(
-          config,
-          process.env.SOLANA_WALLET_PRIVATE_KEY,
-          user.walletAddress,
-        );
+        await balanceWallet(config, activePrivateKey, activeWalletAddress);
+        await rechargeTokens(config, activePrivateKey, activeWalletAddress);
 
         // 2. 가용한 모든 타겟 풀의 포지션 수집
         const poolsArr = config.pools as string[];
@@ -98,8 +81,8 @@ export async function runBotTask() {
             // 풀 가격 및 상위 포지션 조회
             const poolInfo = runCliJson(
               `pools info ${poolAddr}`,
-              process.env.SOLANA_WALLET_PRIVATE_KEY,
-              user.walletAddress,
+              activePrivateKey,
+              activeWalletAddress,
             );
             const currentPrice = parseFloat(
               poolInfo?.data?.pool?.current_price || 0,
@@ -107,8 +90,8 @@ export async function runBotTask() {
 
             const data = runCliJson(
               `positions top-positions --pool ${poolAddr}`,
-              process.env.SOLANA_WALLET_PRIVATE_KEY,
-              user.walletAddress,
+              activePrivateKey,
+              activeWalletAddress,
             );
             const positions = (data?.data?.positions ?? []).filter((p: any) => {
               if (config.requireInRange && !p.inRange) return false;
@@ -168,24 +151,21 @@ export async function runBotTask() {
 
         // 5. 내 포지션 관리 (Out-of-range & Rebalance)
         console.log(`│ [Step 5] Managing existing positions...`);
-        const myList = getMyPositions(
-          process.env.SOLANA_WALLET_PRIVATE_KEY,
-          user.walletAddress,
-        );
+        const myList = getMyPositions(activePrivateKey, activeWalletAddress);
         console.log(`│   - Current positions: ${myList.length}`);
         if (config.isAutoRebalance) {
           await cleanOutOfRange(
             myList,
             config,
-            process.env.SOLANA_WALLET_PRIVATE_KEY,
-            user.walletAddress,
+            activePrivateKey,
+            activeWalletAddress,
           );
           await rebalance(
             myList,
             allCandidates,
             config,
-            process.env.SOLANA_WALLET_PRIVATE_KEY,
-            user.walletAddress,
+            activePrivateKey,
+            activeWalletAddress,
           );
         } else {
           console.log(`│   - isAutoRebalance is OFF. Skipping management.`);
