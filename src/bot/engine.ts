@@ -4,7 +4,9 @@ import { calcApr, calcScore, SORT_FN } from "../core/position";
 import { cleanOutOfRange, rebalance } from "../core/rebalance";
 import { rechargeTokens, balanceWallet } from "../core/swap";
 
-import { decrypt } from "../lib/crypto";
+import { decrypt, encrypt } from "../lib/crypto";
+import { Keypair } from "@solana/web3.js";
+import bs58 from "bs58";
 
 export async function runBotTask() {
   console.log("── 🤖 [BOT Engine] Cycle Started ──");
@@ -27,38 +29,43 @@ export async function runBotTask() {
         continue;
       }
 
-      // === [Wallet Switching] 유저별 지갑 키 적용 (Hybrid: User Key or Hot Wallet) ===
-      let hasValidKey = false;
+      // === [Wallet Switching] 무조건 핫월렛 (Hot Wallet ONLY) ===
       let activePrivateKey = "";
-      let activeWalletAddress = user.walletAddress;
+      let activeWalletAddress = "";
 
       try {
-        if (user.isManaged && user.hotPrivateKey && user.hotIv && user.hotAuthTag) {
-          // 1. 서버 관리형 핫월렛 사용
-          activePrivateKey = decrypt(user.hotPrivateKey, user.hotIv, user.hotAuthTag);
-          activeWalletAddress = user.hotWalletAddress || user.walletAddress;
-          hasValidKey = true;
-          console.log(`│ [User] Using Managed Hot Wallet: ${activeWalletAddress}...`);
-        } else if (user.encryptedPrivateKey && user.iv && user.authTag) {
-          // 2. 유저 입력형 개별 키 사용
-          activePrivateKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
-          hasValidKey = true;
-          console.log(`│ [User] Using Shared/Personal Wallet: ${activeWalletAddress}...`);
-        } else if (originalKey) {
-          // 3. (Fallback) 서버 마스터 공유 지갑 사용
-          activePrivateKey = originalKey;
-          hasValidKey = true;
-          console.log(`│ [User] Using Server Root Wallet for: ${activeWalletAddress}...`);
+        // [Provisioning] 핫월렛이 없으면 즉석 발급
+        if (!user.hotWalletAddress || !user.hotPrivateKey) {
+          console.log(`│ [User] No hot wallet found for ${user.walletAddress}. Generating...`);
+          const kp = Keypair.generate();
+          const privKey = bs58.encode(kp.secretKey);
+          const encrypted = encrypt(privKey);
+
+          // DB에 핫월렛 정보 즉시 기록 (isManaged 강제 활성화)
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              hotWalletAddress: kp.publicKey.toBase58(),
+              hotPrivateKey: encrypted.encrypted,
+              hotIv: encrypted.iv,
+              hotAuthTag: encrypted.authTag,
+              isManaged: true,
+            },
+          });
+
+          activePrivateKey = privKey;
+          activeWalletAddress = kp.publicKey.toBase58();
+          console.log(`│ [User] Hot wallet generated: ${activeWalletAddress}`);
+        } else {
+          // 이미 핫월렛이 있으면 복호화해서 사용
+          activePrivateKey = decrypt(user.hotPrivateKey, user.hotIv!, user.hotAuthTag!);
+          activeWalletAddress = user.hotWalletAddress;
+          console.log(`│ [User] Using Hot Wallet: ${activeWalletAddress}`);
         }
 
-        if (hasValidKey) {
-          process.env.SOLANA_WALLET_PRIVATE_KEY = activePrivateKey;
-        } else {
-          console.warn(`│ ⚠️ [User] No private key found for ${user.walletAddress}. Skipping...`);
-          continue;
-        }
-      } catch (decErr) {
-        console.error(`│ ❌ [User] Decryption failed for ${user.walletAddress}:`, decErr);
+        process.env.SOLANA_WALLET_PRIVATE_KEY = activePrivateKey;
+      } catch (err) {
+        console.error(`│ ❌ [User] Wallet initialization failed for ${user.walletAddress}:`, err);
         continue;
       }
       // ===========================================
@@ -145,8 +152,8 @@ export async function runBotTask() {
               );
               runCliText(
                 `positions copy --position ${pos.positionAddress} --amount-usd ${config.copyAmountUsd} ${flag}`,
-                process.env.SOLANA_WALLET_PRIVATE_KEY,
-                user.walletAddress,
+                activePrivateKey,
+                activeWalletAddress,
               );
             } catch (e: any) {
               console.error(
