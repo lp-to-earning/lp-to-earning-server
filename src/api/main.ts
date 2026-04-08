@@ -4,9 +4,22 @@ import { authenticate, AuthRequest } from "../middleware/auth";
 import { runCliJson, getMyPositions } from "../core/dex";
 import { calcApr, calcScore } from "../core/position";
 import { encrypt, decrypt } from "../lib/crypto";
-import { Connection, Keypair, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  Transaction,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
 import bs58 from "bs58";
-import { TOKEN_PROGRAM_ID, createTransferCheckedInstruction, getAssociatedTokenAddress, getMint } from "@solana/spl-token";
+import {
+  TOKEN_PROGRAM_ID,
+  createTransferCheckedInstruction,
+  getAssociatedTokenAddress,
+  getMint,
+  createAssociatedTokenAccountInstruction,
+} from "@solana/spl-token";
 
 const router = Router();
 
@@ -65,44 +78,48 @@ router.get("/config", authenticate, async (req: AuthRequest, res) => {
 });
 
 // 핫월렛 수동 생성 (명시적 발급)
-router.post("/hot-wallet/create", authenticate, async (req: AuthRequest, res) => {
-  try {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user) return res.status(404).json({ error: "User not found" });
+router.post(
+  "/hot-wallet/create",
+  authenticate,
+  async (req: AuthRequest, res) => {
+    try {
+      const user = await prisma.user.findUnique({ where: { id: req.userId } });
+      if (!user) return res.status(404).json({ error: "User not found" });
 
-    if (user.hotWalletAddress && user.hotPrivateKey) {
-      return res.json({ 
-        success: true, 
-        message: "Hot wallet already exists.", 
-        address: user.hotWalletAddress 
-      });
-    }
-
-    const kp = Keypair.generate();
-    const privKey = bs58.encode(kp.secretKey);
-    const { encrypted, iv, authTag } = encrypt(privKey);
-
-    const updated = await prisma.user.update({
-      where: { id: req.userId },
-      data: {
-        hotWalletAddress: kp.publicKey.toBase58(),
-        hotPrivateKey: encrypted,
-        hotIv: iv,
-        hotAuthTag: authTag,
-        isManaged: true
+      if (user.hotWalletAddress && user.hotPrivateKey) {
+        return res.json({
+          success: true,
+          message: "Hot wallet already exists.",
+          address: user.hotWalletAddress,
+        });
       }
-    });
 
-    res.json({
-      success: true,
-      message: "Hot wallet generated successfully.",
-      address: updated.hotWalletAddress
-    });
-  } catch (e: any) {
-    console.error("[POST /hot-wallet/create]", e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
+      const kp = Keypair.generate();
+      const privKey = bs58.encode(kp.secretKey);
+      const { encrypted, iv, authTag } = encrypt(privKey);
+
+      const updated = await prisma.user.update({
+        where: { id: req.userId },
+        data: {
+          hotWalletAddress: kp.publicKey.toBase58(),
+          hotPrivateKey: encrypted,
+          hotIv: iv,
+          hotAuthTag: authTag,
+          isManaged: true,
+        },
+      });
+
+      res.json({
+        success: true,
+        message: "Hot wallet generated successfully.",
+        address: updated.hotWalletAddress,
+      });
+    } catch (e: any) {
+      console.error("[POST /hot-wallet/create]", e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  },
+);
 
 // 핫월렛 부분/전액 출금 (isMax 지원)
 router.post("/withdraw", authenticate, async (req: AuthRequest, res) => {
@@ -114,9 +131,16 @@ router.post("/withdraw", authenticate, async (req: AuthRequest, res) => {
   }
 
   try {
-    const privKeyStr = decrypt(user.hotPrivateKey, user.hotIv!, user.hotAuthTag!);
+    const privKeyStr = decrypt(
+      user.hotPrivateKey,
+      user.hotIv!,
+      user.hotAuthTag!,
+    );
     const kp = Keypair.fromSecretKey(bs58.decode(privKeyStr));
-    const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+    const connection = new Connection(
+      "https://api.mainnet-beta.solana.com",
+      "confirmed",
+    );
     const toPubkey = new PublicKey(user.walletAddress);
     const transaction = new Transaction();
 
@@ -138,6 +162,18 @@ router.post("/withdraw", authenticate, async (req: AuthRequest, res) => {
       }
 
       if (finalAmount > 0n) {
+        const toAtaInfo = await connection.getAccountInfo(toAta);
+        if (!toAtaInfo) {
+          transaction.add(
+            createAssociatedTokenAccountInstruction(
+              kp.publicKey,
+              toAta,
+              toPubkey,
+              tokenMint,
+            ),
+          );
+        }
+
         transaction.add(
           createTransferCheckedInstruction(
             fromAta,
@@ -145,8 +181,8 @@ router.post("/withdraw", authenticate, async (req: AuthRequest, res) => {
             toAta,
             kp.publicKey,
             finalAmount,
-            mintInfo.decimals
-          )
+            mintInfo.decimals,
+          ),
         );
       }
     }
@@ -164,7 +200,7 @@ router.post("/withdraw", authenticate, async (req: AuthRequest, res) => {
             fromPubkey: kp.publicKey,
             toPubkey: toPubkey,
             lamports: toTransfer,
-          })
+          }),
         );
       }
     } else if (amountSol && amountSol > 0) {
@@ -174,12 +210,14 @@ router.post("/withdraw", authenticate, async (req: AuthRequest, res) => {
           fromPubkey: kp.publicKey,
           toPubkey: toPubkey,
           lamports: rawSolAmount,
-        })
+        }),
       );
     }
 
     if (transaction.instructions.length === 0) {
-      return res.status(400).json({ error: "No withdrawal amounts or valid mint specified." });
+      return res
+        .status(400)
+        .json({ error: "No withdrawal amounts or valid mint specified." });
     }
 
     const txHash = await connection.sendTransaction(transaction, [kp]);
@@ -198,11 +236,20 @@ router.post("/withdraw-all", authenticate, async (req: AuthRequest, res) => {
   }
 
   try {
-    const privKeyStr = decrypt(user.hotPrivateKey, user.hotIv!, user.hotAuthTag!);
+    const privKeyStr = decrypt(
+      user.hotPrivateKey,
+      user.hotIv!,
+      user.hotAuthTag!,
+    );
     const kp = Keypair.fromSecretKey(bs58.decode(privKeyStr));
-    const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+    const connection = new Connection(
+      "https://api.mainnet-beta.solana.com",
+      "confirmed",
+    );
     const toPubkey = new PublicKey(user.walletAddress);
-    const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+    const USDC_MINT = new PublicKey(
+      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    );
 
     const transaction = new Transaction();
 
@@ -215,6 +262,18 @@ router.post("/withdraw-all", authenticate, async (req: AuthRequest, res) => {
       const balanceObj = await connection.getTokenAccountBalance(fromAta);
       const amount = BigInt(balanceObj.value.amount);
       if (amount > 0n) {
+        const toAtaInfo = await connection.getAccountInfo(toAta);
+        if (!toAtaInfo) {
+          transaction.add(
+            createAssociatedTokenAccountInstruction(
+              kp.publicKey,
+              toAta,
+              toPubkey,
+              USDC_MINT,
+            ),
+          );
+        }
+
         transaction.add(
           createTransferCheckedInstruction(
             fromAta,
@@ -222,8 +281,8 @@ router.post("/withdraw-all", authenticate, async (req: AuthRequest, res) => {
             toAta,
             kp.publicKey,
             amount,
-            6
-          )
+            6,
+          ),
         );
       }
     }
@@ -240,7 +299,7 @@ router.post("/withdraw-all", authenticate, async (req: AuthRequest, res) => {
           fromPubkey: kp.publicKey,
           toPubkey: toPubkey,
           lamports: amountToTransfer,
-        })
+        }),
       );
     }
 
@@ -249,7 +308,11 @@ router.post("/withdraw-all", authenticate, async (req: AuthRequest, res) => {
     }
 
     const txHash = await connection.sendTransaction(transaction, [kp]);
-    res.json({ success: true, message: "SOL & USDC withdrawal successful.", txHash });
+    res.json({
+      success: true,
+      message: "SOL & USDC withdrawal successful.",
+      txHash,
+    });
   } catch (e: any) {
     console.error("[POST /api/withdraw-all]", e);
     res.status(500).json({ success: false, error: e.message });
@@ -347,25 +410,32 @@ router.get("/balances", authenticate, async (req: AuthRequest, res) => {
     }
 
     const targetAddress = user.hotWalletAddress || user.walletAddress;
-    const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+    const connection = new Connection(
+      "https://api.mainnet-beta.solana.com",
+      "confirmed",
+    );
 
     // 1. SOL 잔액 조회
-    const solBalance = await connection.getBalance(new PublicKey(targetAddress));
+    const solBalance = await connection.getBalance(
+      new PublicKey(targetAddress),
+    );
 
     // 2. 모든 SPL 토큰 잔액 조회
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
       new PublicKey(targetAddress),
-      { programId: TOKEN_PROGRAM_ID }
+      { programId: TOKEN_PROGRAM_ID },
     );
 
-    const tokens = tokenAccounts.value.map((ta: any) => {
-      const info = ta.account.data.parsed.info;
-      return {
-        mint: info.mint,
-        amount: info.tokenAmount.uiAmount,
-        decimals: info.tokenAmount.decimals,
-      };
-    }).filter(t => t.amount > 0);
+    const tokens = tokenAccounts.value
+      .map((ta: any) => {
+        const info = ta.account.data.parsed.info;
+        return {
+          mint: info.mint,
+          amount: info.tokenAmount.uiAmount,
+          decimals: info.tokenAmount.decimals,
+        };
+      })
+      .filter((t) => t.amount > 0);
 
     res.json({
       success: true,
@@ -393,7 +463,12 @@ router.get("/positions", authenticate, async (req: AuthRequest, res) => {
     let decryptedKey: string | undefined = undefined;
     const targetAddress = user?.hotWalletAddress || user?.walletAddress;
 
-    if (user?.isManaged && user.hotPrivateKey && user.hotIv && user.hotAuthTag) {
+    if (
+      user?.isManaged &&
+      user.hotPrivateKey &&
+      user.hotIv &&
+      user.hotAuthTag
+    ) {
       try {
         decryptedKey = decrypt(user.hotPrivateKey, user.hotIv, user.hotAuthTag);
       } catch (e) {}
