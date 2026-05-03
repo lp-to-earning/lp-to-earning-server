@@ -129,3 +129,25 @@ export function getMyPositions(
   }
   return allPos;
 }
+
+export function claimFees(
+  nftMints: string[],
+  isDryRun: boolean,
+  privateKey?: string,
+  walletAddress?: string,
+): void {
+  if (nftMints.length === 0) return;
+  const flag = isDryRun ? "--dry-run" : "--confirm";
+  const mintsStr = nftMints.join(",");
+  
+  try {
+    const result = runCliJson(
+      `positions claim --nft-mints ${mintsStr} ${flag}`,
+      privateKey,
+      walletAddress
+    );
+    console.log(`│   - Claim successful for ${nftMints.length} positions.`);
+  } catch (e: any) {
+    console.error(`│   - Claim failed:`, e.message || e);
+  }
+}

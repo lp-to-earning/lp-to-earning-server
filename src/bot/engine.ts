@@ -1,5 +1,5 @@
 import { prisma } from "../lib/db";
-import { runCliJson, runCliText, getMyPositions } from "../core/dex";
+import { runCliJson, runCliText, getMyPositions, claimFees } from "../core/dex";
 import { calcApr, calcScore, SORT_FN } from "../core/position";
 import { cleanOutOfRange, rebalance } from "../core/rebalance";
 import { rechargeTokens, balanceWallet } from "../core/swap";
@@ -162,6 +162,24 @@ export async function runBotTask() {
         console.log(`│ [Step 5] Managing existing positions...`);
         const myList = getMyPositions(activePrivateKey, activeWalletAddress);
         console.log(`│   - Current positions: ${myList.length}`);
+        // 4.5 수수료 수확 (Harvest) - 사용자가 수동 수확을 원하므로 주석 처리
+        /*
+        console.log(`│ [Step 4.5] Claiming accumulated fees and bonuses...`);
+        const toClaim = myList.filter((p: any) => {
+          const earned = parseFloat(p.earnedUsd || 0);
+          const bonus = parseFloat(p.bonusUsd || 0);
+          return (earned + bonus) > 0.1; // 최소 $0.1 이상일 때 수확
+        });
+
+        if (toClaim.length > 0) {
+          const mints = toClaim.map((p: any) => p.nftMintAddress ?? p.positionAddress);
+          console.log(`│   - Attempting to claim from ${mints.length} positions...`);
+          claimFees(mints, config.dryRun, activePrivateKey, activeWalletAddress);
+        } else {
+          console.log(`│   - No significant fees to claim.`);
+        }
+        */
+
         if (config.isAutoRebalance) {
           await cleanOutOfRange(
             myList,

@@ -520,6 +520,53 @@ router.get("/positions", authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// 포지션 수수료/보너스 수확 (수동)
+router.post("/positions/claim", authenticate, async (req: AuthRequest, res) => {
+  const { nftMints } = req.body;
+  if (!nftMints || !Array.isArray(nftMints) || nftMints.length === 0) {
+    return res.status(400).json({ error: "nftMints array is required." });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+    });
+
+    let decryptedKey: string | undefined = undefined;
+    const targetAddress = user?.hotWalletAddress || user?.walletAddress;
+
+    if (
+      user?.isManaged &&
+      user.hotPrivateKey &&
+      user.hotIv &&
+      user.hotAuthTag
+    ) {
+      try {
+        decryptedKey = decrypt(user.hotPrivateKey, user.hotIv, user.hotAuthTag);
+      } catch (e) {}
+    } else if (user?.encryptedPrivateKey && user.iv && user.authTag) {
+      try {
+        decryptedKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
+      } catch (e) {}
+    } else {
+      decryptedKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
+    }
+
+    const mintsStr = nftMints.join(",");
+    
+    const result = runCliJson(
+      `positions claim --nft-mints ${mintsStr} --confirm`,
+      decryptedKey,
+      targetAddress
+    );
+
+    res.json({ success: true, message: "Claim successful.", data: result });
+  } catch (e: any) {
+    console.error("[POST /api/positions/claim]", e);
+    res.status(500).json({ success: false, error: e.message || "Claim failed." });
+  }
+});
+
 // DEX 전체 풀 목록 조회 (검색용, 인증 없음)
 router.get("/pools/all", async (req, res) => {
   try {
