@@ -24,6 +24,33 @@ import {
 const router = Router();
 
 // ==========================================
+// 0. Helper for User Key Decryption (Clean Code)
+// ==========================================
+async function getDecryptedKeyForUser(userId: number) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+  if (!user) return { decryptedKey: undefined, targetAddress: undefined };
+
+  let decryptedKey: string | undefined = undefined;
+  const targetAddress = user.hotWalletAddress || user.walletAddress;
+
+  if (user.isManaged && user.hotPrivateKey && user.hotIv && user.hotAuthTag) {
+    try {
+      decryptedKey = decrypt(user.hotPrivateKey, user.hotIv, user.hotAuthTag);
+    } catch (e) {}
+  } else if (user.encryptedPrivateKey && user.iv && user.authTag) {
+    try {
+      decryptedKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
+    } catch (e) {}
+  } else {
+    decryptedKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
+  }
+
+  return { decryptedKey, targetAddress };
+}
+
+// ==========================================
 // 0. Cache Config (To speed up slow CLI queries)
 // ==========================================
 const cache: Record<string, { time: number; data: any }> = {};
@@ -456,28 +483,9 @@ router.get("/balances", authenticate, async (req: AuthRequest, res) => {
 // 내 포지션 조회
 router.get("/positions", authenticate, async (req: AuthRequest, res) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId },
-    });
-
-    let decryptedKey: string | undefined = undefined;
-    const targetAddress = user?.hotWalletAddress || user?.walletAddress;
-
-    if (
-      user?.isManaged &&
-      user.hotPrivateKey &&
-      user.hotIv &&
-      user.hotAuthTag
-    ) {
-      try {
-        decryptedKey = decrypt(user.hotPrivateKey, user.hotIv, user.hotAuthTag);
-      } catch (e) {}
-    } else if (user?.encryptedPrivateKey && user.iv && user.authTag) {
-      try {
-        decryptedKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
-      } catch (e) {}
-    } else {
-      decryptedKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
+    const { decryptedKey, targetAddress } = await getDecryptedKeyForUser(req.userId!);
+    if (!targetAddress) {
+      return res.status(400).json({ error: "No wallet address found for user." });
     }
 
     const myList = getMyPositions(decryptedKey, targetAddress);
@@ -528,30 +536,7 @@ router.post("/positions/claim", authenticate, async (req: AuthRequest, res) => {
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId },
-    });
-
-    let decryptedKey: string | undefined = undefined;
-    const targetAddress = user?.hotWalletAddress || user?.walletAddress;
-
-    if (
-      user?.isManaged &&
-      user.hotPrivateKey &&
-      user.hotIv &&
-      user.hotAuthTag
-    ) {
-      try {
-        decryptedKey = decrypt(user.hotPrivateKey, user.hotIv, user.hotAuthTag);
-      } catch (e) {}
-    } else if (user?.encryptedPrivateKey && user.iv && user.authTag) {
-      try {
-        decryptedKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
-      } catch (e) {}
-    } else {
-      decryptedKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
-    }
-
+    const { decryptedKey, targetAddress } = await getDecryptedKeyForUser(req.userId!);
     const mintsStr = nftMints.join(",");
     
     const result = runCliJson(
@@ -564,6 +549,29 @@ router.post("/positions/claim", authenticate, async (req: AuthRequest, res) => {
   } catch (e: any) {
     console.error("[POST /api/positions/claim]", e);
     res.status(500).json({ success: false, error: e.message || "Claim failed." });
+  }
+});
+
+// 개별 포지션 닫기 (수동)
+router.post("/positions/close", authenticate, async (req: AuthRequest, res) => {
+  const { nftMint } = req.body;
+  if (!nftMint) {
+    return res.status(400).json({ error: "nftMint is required." });
+  }
+
+  try {
+    const { decryptedKey, targetAddress } = await getDecryptedKeyForUser(req.userId!);
+    
+    const result = runCliJson(
+      `positions close --nft-mint ${nftMint} --confirm`,
+      decryptedKey,
+      targetAddress
+    );
+
+    res.json({ success: true, message: "Position closed successfully.", data: result });
+  } catch (e: any) {
+    console.error("[POST /api/positions/close]", e);
+    res.status(500).json({ success: false, error: e.message || "Failed to close position." });
   }
 });
 
@@ -624,19 +632,11 @@ router.get("/tokens/all", async (req, res) => {
 // 풀 및 토큰 조회
 router.get("/pools", authenticate, async (req: AuthRequest, res) => {
   try {
+    const { decryptedKey, targetAddress } = await getDecryptedKeyForUser(req.userId!);
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
       include: { config: true },
     });
-
-    let decryptedKey: string | undefined = undefined;
-    if (user?.encryptedPrivateKey && user.iv && user.authTag) {
-      try {
-        decryptedKey = decrypt(user.encryptedPrivateKey, user.iv, user.authTag);
-      } catch (e) {}
-    } else {
-      decryptedKey = process.env.SOLANA_WALLET_PRIVATE_KEY;
-    }
 
     const poolsArr = (user?.config?.pools as string[]) || [];
 
@@ -646,7 +646,7 @@ router.get("/pools", authenticate, async (req: AuthRequest, res) => {
       if (cache[cacheKey] && Date.now() - cache[cacheKey].time < CACHE_TTL_MS) {
         data = cache[cacheKey].data;
       } else {
-        data = runCliJson(cacheKey, decryptedKey, user?.walletAddress);
+        data = runCliJson(cacheKey, decryptedKey, targetAddress);
         cache[cacheKey] = { time: Date.now(), data };
       }
 
